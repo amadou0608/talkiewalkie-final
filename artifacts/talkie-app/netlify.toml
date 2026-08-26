@@ -1,0 +1,30 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+# Netlify evalue les redirections dans l'ordre : les regles precises
+# doivent donc venir avant le fallback generique ci-dessous.
+
+# Le service worker (sw.js, genere par vite-plugin-pwa a partir de src/sw.ts
+# — Phase 10) doit rester servi tel quel, jamais reecrit vers index.html.
+[[redirects]]
+  from = "/sw.js"
+  to = "/sw.js"
+  status = 200
+
+# React Router fait le routing cote client (/talk/:userId, /settings, ...).
+# Sans ce fallback, un rechargement sur une route autre que "/" renvoie une
+# 404 cote Netlify au lieu de laisser index.html + React Router gerer la
+# route.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    # Empeche un CDN/navigateur de mettre le service worker en cache trop
+    # longtemps : sinon une mise a jour peut mettre des heures a se
+    # propager malgre le "prompt" de UpdateToast.
+    Cache-Control = "no-cache"
