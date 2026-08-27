@@ -83,9 +83,9 @@ async function request<T>(path: string, options: RequestInit): Promise<T> {
 
   if (!response.ok) {
     throw new AuthApiError({
-      code: body?.code ?? 'UNKNOWN',
-      message: body?.message ?? 'Une erreur est survenue.',
-    })
+  code: body?.code ?? 'UNKNOWN',
+  message: body?.message ?? `Erreur ${response.status}: ${JSON.stringify(body)}`,
+});
   }
 
   return body as T
