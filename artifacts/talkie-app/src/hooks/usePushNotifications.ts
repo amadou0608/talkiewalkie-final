@@ -14,7 +14,7 @@ import { apiGetPushPublicKey, apiSubscribePush, apiUnsubscribePush } from '@/lib
 
 const supported = typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
 
-function urlBase64ToUint8Array(base64Url: string): Uint8Array {
+function urlBase64ToUint8Array(base64Url: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64Url.length % 4)) % 4)
   const base64 = (base64Url + padding).replace(/-/g, '+').replace(/_/g, '/')
   const raw = atob(base64)

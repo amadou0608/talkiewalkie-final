@@ -333,7 +333,15 @@ export default function Talk() {
                     <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? 'text-ink/70' : 'text-paperDim'}`}>
                       <span>{timeLabel(message.createdAt)}</span>
                       {mine && !message.deletedAt && <>{message.type === 'text' && <button type="button" title="Modifier" onClick={() => { setEditingId(message.id); setEditText(message.content ?? '') }} className="ml-1 opacity-70 hover:opacity-100"><Pencil size={11} /></button>}<button type="button" title="Supprimer pour tout le monde" onClick={() => void removeMessage(message.id)} className="opacity-70 hover:opacity-100"><Trash2 size={11} /></button></>}
-                      {mine && (message.status === 'sent' ? <Check size={13} /> : message.status === 'delivered' ? <CheckCheck size={13} /> : <CheckCheck size={13} className="font-bold" />)}
+                      {mine && (
+                        <span
+                          title={message.status === 'sent' ? 'Envoyé' : message.status === 'delivered' ? 'Reçu' : 'Lu'}
+                          aria-label={message.status === 'sent' ? 'Message envoyé' : message.status === 'delivered' ? 'Message reçu' : 'Message lu'}
+                          className={message.status === 'read' ? 'text-sky-400' : 'text-paperDim'}
+                        >
+                          {message.status === 'sent' ? <Check size={13} /> : <CheckCheck size={13} />}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

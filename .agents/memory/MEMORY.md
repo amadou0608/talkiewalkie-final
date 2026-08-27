@@ -1,0 +1,1 @@
+- [Talkie frontend build](talkie-build.md) — Vite/PWA validation needs PORT and a direct workbox-window dependency.
