@@ -11,8 +11,9 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const payload = token ? verifySession(token) : null
 
   if (!payload) {
-    next(new AppError('UNAUTHENTICATED', 'Session invalide ou expiree.', 401))
-    return
+  const hasCookie = Boolean(token)
+  next(new AppError('UNAUTHENTICATED', `Session invalide ou expiree. [debug: cookie present=${hasCookie}]`, 401))
+  return
   }
 
   req.userId = payload.userId
