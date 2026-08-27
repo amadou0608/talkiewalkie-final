@@ -11,11 +11,12 @@ import { loginSchema, registerSchema } from './auth.schemas'
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 // httpOnly : le JS du navigateur ne peut pas lire le cookie (protection XSS
-// basique sur le token) ; sameSite=lax limite les envois cross-site (CSRF) ;
+// basique sur le token) ; sameSite: 'none' en production autorise l'envoi
+// cross-site entre le frontend et le backend (domaines Render différents) ;
 // secure en production uniquement (HTTPS obligatoire, section 13).
 const cookieOptions: CookieOptions = {
   httpOnly: true,
-  sameSite: 'lax',
+  sameSite: env.isProduction ? 'none' : 'lax',
   secure: env.isProduction,
   maxAge: SEVEN_DAYS_MS,
   path: '/',
