@@ -12,6 +12,16 @@ import type { PresenceStatus, User } from '@/types'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
+// L'URL renvoyee par le backend pour l'avatar est relative (/api/auth/avatar/xxx).
+// On la complete avec l'origine du serveur pour obtenir une URL chargeable
+// par le navigateur (frontend et backend sont sur des domaines differents).
+export function resolveAvatarUrl(avatarUrl?: string): string | undefined {
+  if (!avatarUrl) return undefined
+  if (avatarUrl.startsWith('http')) return avatarUrl
+  const origin = API_URL.replace(/\/api\/?$/, '')
+  return `${origin}${avatarUrl}`
+}
+
 export interface AuthError {
   code: string
   message: string
@@ -159,4 +169,4 @@ export async function apiGetSession(): Promise<User | null> {
     if (err instanceof AuthApiError && err.code === 'UNAUTHENTICATED') return null
     return null
   }
-  }
+    }
