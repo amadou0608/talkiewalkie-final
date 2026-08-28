@@ -42,7 +42,7 @@ export default function Home() {
   const byUser = new Map(accepted.map((c) => [c.user.id, c]))
   const rows = summaries.length ? summaries : accepted.slice(0, 6).map((c) => ({
     userId: c.user.id, messageId: '', type: 'text' as const, content: null, createdAt: '', status: 'read' as const, senderId: user?.id ?? '', unreadCount: 0,
-    user: { id: c.user.id, username: c.user.username, displayName: c.user.displayName, avatarColor: c.user.avatarColor },
+    user: { id: c.user.id, username: c.user.username, displayName: c.user.displayName, avatarColor: c.user.avatarColor, avatarUrl: c.user.avatarUrl },
   }))
 
   return (
@@ -60,7 +60,7 @@ export default function Home() {
           const contact = byUser.get(row.userId)
           const preview = row.type === 'text' ? (row.content || 'Message') : row.type === 'voice' ? '🎙️ Message vocal' : row.type === 'image' ? '📷 Photo' : '🎥 Vidéo'
           return <button key={row.userId} onClick={() => navigate(`/talk/${row.userId}`)} className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left last:border-b-0 hover:bg-panel2">
-            <Avatar name={row.user.displayName} color={row.user.avatarColor} size={42} />
+            <Avatar name={row.user.displayName} color={row.user.avatarColor} avatarUrl={row.user.avatarUrl} size={42} />
             <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="truncate font-display text-sm font-semibold text-paper">{row.user.displayName}</p>{row.createdAt && <span className="shrink-0 text-[10px] text-paperDim">{new Date(row.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span>}</div><div className="flex items-center gap-2"><p className={`truncate text-xs ${row.unreadCount ? 'font-semibold text-paper' : 'text-paperDim'}`}>{preview}</p>{row.unreadCount > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-transmit px-1.5 text-[10px] font-bold text-ink">{row.unreadCount > 99 ? '99+' : row.unreadCount}</span>}</div>{contact && <StatusDot status={contact.user.status} showLabel={false} />}</div>
             <ChevronRight size={17} className="shrink-0 text-paperDim" />
           </button>
@@ -75,4 +75,4 @@ export default function Home() {
       )}
     </div>
   )
-    }
+              }
