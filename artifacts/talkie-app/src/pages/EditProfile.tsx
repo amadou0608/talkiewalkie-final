@@ -4,6 +4,7 @@ import { Camera, ChevronLeft } from 'lucide-react'
 import TopBar from '@/components/TopBar'
 import Avatar from '@/components/Avatar'
 import { useAuth } from '@/context/AuthContext'
+import { resolveAvatarUrl } from '@/lib/authApi'
 
 export default function EditProfile() {
   const { user, updateProfile, uploadAvatar } = useAuth()
@@ -52,13 +53,13 @@ export default function EditProfile() {
       <main className="mx-auto max-w-md px-5 pt-6">
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <Avatar name={displayName || user.displayName} color={user.avatarColor} avatarUrl={user.avatarUrl} size={88} ring />
+            
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingAvatar}
               className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white border-2 border-panel"
-            >
+            ><Avatar name={displayName || user.displayName} color={user.avatarColor} avatarUrl={resolveAvatarUrl(user.avatarUrl)} size={88} ring />
               <Camera size={16} />
             </button>
             <input
