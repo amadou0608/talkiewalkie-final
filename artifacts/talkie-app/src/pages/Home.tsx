@@ -5,10 +5,13 @@ import TopBar from '@/components/TopBar'
 import BottomNav from '@/components/BottomNav'
 import Avatar from '@/components/Avatar'
 import StatusDot from '@/components/StatusDot'
+import StoryBar from '@/components/StoryBar'
+import StoryViewer from '@/components/StoryViewer'
 import { useContacts } from '@/context/ContactsContext'
 import { useAuth } from '@/context/AuthContext'
 import { apiConversationSummaries, type ConversationSummary } from '@/lib/messagesApi'
 import { connectSocket, getSocket } from '@/lib/socket'
+import type { StoryGroup } from '@/lib/storiesApi'
 
 // Accueil préparé pour Talkie Chat : les conversations complètes arrivent en
 // Phase 14. Pour cette Phase 13, l'écran ne contient plus aucun contrôle PTT.
@@ -17,6 +20,7 @@ export default function Home() {
   const { user } = useAuth()
   const { accepted, loading } = useContacts()
   const [summaries, setSummaries] = useState<ConversationSummary[]>([])
+  const [viewer, setViewer] = useState<{ groups: StoryGroup[]; startIndex: number } | null>(null)
 
   useEffect(() => {
     apiConversationSummaries().then(setSummaries).catch(() => {})
@@ -45,6 +49,7 @@ export default function Home() {
     <div className="min-h-screen pb-24">
       <TopBar eyebrow={user ? `@${user.username}` : undefined} title="Talkie Chat" />
       <main className="mx-auto max-w-md px-5 pt-6">
+        <StoryBar onOpenGroup={(groups, startIndex) => setViewer({ groups, startIndex })} />
         <div className="mb-5 flex items-center justify-between">
           <div><p className="callsign text-[11px] uppercase tracking-widest text-paperDim">Messagerie</p><h1 className="mt-1 font-display text-xl font-semibold text-paper">Conversations</h1></div>
           <button onClick={() => navigate('/contacts/add')} aria-label="Ajouter un contact" className="rounded-full border border-line bg-panel p-2.5 text-paperDim hover:bg-panel2 hover:text-paper"><UserPlus size={18} /></button>
@@ -61,6 +66,13 @@ export default function Home() {
           </button>
         })}</div>}
       </main><BottomNav />
+      {viewer && (
+        <StoryViewer
+          groups={viewer.groups}
+          startGroupIndex={viewer.startIndex}
+          onClose={() => setViewer(null)}
+        />
+      )}
     </div>
   )
-}
+    }
