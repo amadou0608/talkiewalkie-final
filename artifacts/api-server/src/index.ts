@@ -8,6 +8,7 @@ import { contactsRouter } from './modules/contacts/contacts.routes'
 import { voiceMessagesRouter } from './modules/voice-messages/voice-messages.routes'
 import { pushRouter } from './modules/push/push.routes'
 import { messagesRouter } from './modules/messages/messages.routes'
+import { storiesRouter } from './modules/stories/stories.routes'
 import { errorHandler } from './middleware/errorHandler'
 import { securityHeaders, apiRateLimit } from './middleware/security'
 import { csrfProtection } from './middleware/csrfProtection'
@@ -52,6 +53,7 @@ app.use(`${API_PREFIX}/contacts`, contactsRouter)
 app.use(`${API_PREFIX}/voice-messages`, voiceMessagesRouter)
 app.use(`${API_PREFIX}/push`, pushRouter)
 app.use(`${API_PREFIX}/messages`, messagesRouter)
+app.use(`${API_PREFIX}/stories`, storiesRouter)
 
 // Doit rester apres toutes les routes.
 app.use(errorHandler)
