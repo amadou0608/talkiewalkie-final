@@ -9,6 +9,7 @@ export interface UserRow {
   display_name: string
   phone_number: string | null
   avatar_url: string | null
+  bio: string | null
   password_hash: string
   created_at: Date
   updated_at: Date
@@ -23,7 +24,9 @@ export interface PublicUser {
   username: string
   displayName: string
   avatarColor: string
+  avatarUrl?: string
+  bio: string
   phoneNumber?: string
   status: 'online' | 'away' | 'offline'
   lastSeen: string
-}
+  }
