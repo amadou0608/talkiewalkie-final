@@ -10,6 +10,8 @@ export function toPublicUser(row: UserRow): PublicUser {
     username: row.username,
     displayName: row.display_name,
     avatarColor: avatarColorFor(row.username),
+    avatarUrl: row.avatar_url ?? undefined,
+    bio: row.bio ?? '',
     phoneNumber: row.phone_number ?? undefined,
     status: row.is_online ? 'online' : 'offline',
     lastSeen: relativeLastSeen(row.last_seen, row.is_online),
