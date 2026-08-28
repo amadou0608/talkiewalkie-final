@@ -9,6 +9,8 @@ export interface User {
   username: string          // identifiant public, ex: "saugui_47291"
   displayName: string
   avatarColor: string       // teinte generee pour l'avatar (pas d'upload en phase 1)
+  avatarUrl?: string        // Phase 20 : photo de profil uploadee, remplace avatarColor si presente
+  bio: string                // Phase 20 : statut/bio texte
   phoneNumber?: string
   status: PresenceStatus
   lastSeen: string          // libelle relatif, ex: "il y a 2 min"
@@ -62,4 +64,4 @@ export interface PrivacySettings {
   whoCanCall: 'contacts' | 'everyone'
   showStatus: boolean
   searchableByPhone: boolean
-}
+  }
