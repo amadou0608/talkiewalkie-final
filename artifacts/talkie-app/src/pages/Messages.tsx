@@ -167,7 +167,12 @@ export default function Messages() {
                     unread ? 'border-transmit/40 bg-transmit/5' : 'border-line bg-panel'
                   }`}
                 >
-                  <Avatar name={m.sender.displayName} color={m.sender.avatarColor} size={44} />
+                  <Avatar
+                    name={m.sender.displayName}
+                    color={m.sender.avatarColor}
+                    avatarUrl={m.sender.avatarUrl}
+                    size={44}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate font-display text-sm font-medium text-paper">
