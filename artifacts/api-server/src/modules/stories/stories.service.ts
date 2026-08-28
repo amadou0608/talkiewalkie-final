@@ -1,16 +1,42 @@
 import { pool } from '../../db/pool'
 import { AppError } from '../../utils/AppError'
 import { avatarColorFor } from '../../utils/presentation'
-import type { StoryRow, StoryGroup } from './stories.types'
+import type { StoryRow, StoryGroup, StoryVisibilityMode, StoryViewer } from './stories.types'
 
-export async function createStory(userId: string, imageUrl: string): Promise<StoryRow> {
-  const result = await pool.query<StoryRow>(
-    `INSERT INTO stories (user_id, image_url, expires_at)
-     VALUES ($1, $2, now() + INTERVAL '24 hours')
-     RETURNING *`,
-    [userId, imageUrl],
-  )
-  return result.rows[0]
+export async function createStory(
+  userId: string,
+  imageUrl: string,
+  visibilityMode: StoryVisibilityMode,
+  targetUserIds: string[],
+): Promise<StoryRow> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const result = await client.query<StoryRow>(
+      `INSERT INTO stories (user_id, image_url, expires_at, visibility_mode)
+       VALUES ($1, $2, now() + INTERVAL '24 hours', $3)
+       RETURNING *`,
+      [userId, imageUrl, visibilityMode],
+    )
+    const story = result.rows[0]
+
+    if (visibilityMode !== 'all' && targetUserIds.length > 0) {
+      const values = targetUserIds.map((_, i) => `($1, $${i + 2})`).join(', ')
+      await client.query(
+        `INSERT INTO story_visibility_list (story_id, user_id) VALUES ${values}`,
+        [story.id, ...targetUserIds],
+      )
+    }
+
+    await client.query('COMMIT')
+    return story
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
 }
 
 export async function listMyStories(userId: string): Promise<StoryRow[]> {
@@ -23,6 +49,8 @@ export async function listMyStories(userId: string): Promise<StoryRow[]> {
 
 // Stories de mes contacts acceptes (relation dirigee : je dois avoir ajoute
 // la personne et le statut doit etre 'accepted', comme dans contacts.service.ts).
+// Le filtre de confidentialite (visibility_mode / story_visibility_list) est
+// applique directement dans la requete SQL.
 export async function listContactsStories(userId: string): Promise<StoryGroup[]> {
   const result = await pool.query<StoryRow & {
     username: string
@@ -34,6 +62,15 @@ export async function listContactsStories(userId: string): Promise<StoryGroup[]>
      JOIN contacts c ON c.contact_user_id = s.user_id
      JOIN users u ON u.id = s.user_id
      WHERE c.user_id = $1 AND c.status = 'accepted' AND s.expires_at > now()
+       AND (
+         s.visibility_mode = 'all'
+         OR (s.visibility_mode = 'except' AND NOT EXISTS (
+              SELECT 1 FROM story_visibility_list svl WHERE svl.story_id = s.id AND svl.user_id = $1
+            ))
+         OR (s.visibility_mode = 'only' AND EXISTS (
+              SELECT 1 FROM story_visibility_list svl WHERE svl.story_id = s.id AND svl.user_id = $1
+            ))
+       )
      ORDER BY s.created_at ASC`,
     [userId],
   )
@@ -69,13 +106,14 @@ export async function listContactsStories(userId: string): Promise<StoryGroup[]>
       createdAt: row.created_at.toISOString(),
       expiresAt: row.expires_at.toISOString(),
       viewed,
+      visibilityMode: row.visibility_mode,
     })
   }
   return Array.from(groups.values())
 }
 
 export async function markStoryViewed(storyId: string, viewerId: string): Promise<void> {
-  const story = await pool.query<StoryRow>(`SELECT * FROM stories WHERE id = $1`, [storyId])
+  const story = await pool.query<StoryRow>('SELECT * FROM stories WHERE id = $1', [storyId])
   if (story.rows.length === 0) {
     throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
   }
@@ -86,9 +124,42 @@ export async function markStoryViewed(storyId: string, viewerId: string): Promis
   )
 }
 
+// Liste des personnes ayant vu ma story. Verifie que la story appartient bien
+// a ownerId avant de renvoyer quoi que ce soit.
+export async function getStoryViewers(storyId: string, ownerId: string): Promise<StoryViewer[]> {
+  const story = await pool.query<StoryRow>(
+    'SELECT * FROM stories WHERE id = $1 AND user_id = $2',
+    [storyId, ownerId],
+  )
+  if (story.rows.length === 0) {
+    throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
+  }
+
+  const result = await pool.query<{
+    viewer_id: string
+    username: string
+    display_name: string
+    avatar_url: string | null
+  }>(
+    `SELECT sv.viewer_id, u.username, u.display_name, u.avatar_url
+     FROM story_views sv
+     JOIN users u ON u.id = sv.viewer_id
+     WHERE sv.story_id = $1`,
+    [storyId],
+  )
+
+  return result.rows.map((row) => ({
+    userId: row.viewer_id,
+    username: row.username,
+    displayName: row.display_name,
+    avatarColor: avatarColorFor(row.username),
+    avatarUrl: row.avatar_url ?? undefined,
+  }))
+}
+
 export async function deleteStory(userId: string, storyId: string): Promise<void> {
-  const result = await pool.query(`DELETE FROM stories WHERE id = $1 AND user_id = $2`, [storyId, userId])
+  const result = await pool.query('DELETE FROM stories WHERE id = $1 AND user_id = $2', [storyId, userId])
   if (result.rowCount === 0) {
     throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
   }
-    }
+                                        }
