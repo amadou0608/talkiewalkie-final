@@ -1,5 +1,6 @@
 import { pool } from '../../db/pool'
 import { AppError } from '../../utils/AppError'
+import { avatarColorFor } from '../../utils/presentation'
 import type { StoryRow, StoryGroup } from './stories.types'
 
 export async function createStory(userId: string, imageUrl: string): Promise<StoryRow> {
@@ -26,10 +27,9 @@ export async function listContactsStories(userId: string): Promise<StoryGroup[]>
   const result = await pool.query<StoryRow & {
     username: string
     display_name: string
-    avatar_color: string
     avatar_url: string | null
   }>(
-    `SELECT s.*, u.username, u.display_name, u.avatar_color, u.avatar_url
+    `SELECT s.*, u.username, u.display_name, u.avatar_url
      FROM stories s
      JOIN contacts c ON c.contact_user_id = s.user_id
      JOIN users u ON u.id = s.user_id
@@ -52,7 +52,7 @@ export async function listContactsStories(userId: string): Promise<StoryGroup[]>
           id: row.user_id,
           username: row.username,
           displayName: row.display_name,
-          avatarColor: row.avatar_color,
+          avatarColor: avatarColorFor(row.username),
           avatarUrl: row.avatar_url ?? undefined,
         },
         stories: [],
