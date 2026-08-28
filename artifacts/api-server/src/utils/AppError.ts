@@ -32,6 +32,8 @@ export type AppErrorCode =
   | 'NOT_FOUND'
   // Phase 21 — stories
   | 'STORY_NOT_FOUND'
+  // Phase 22 — confidentialite des stories
+  | 'INVALID_VISIBILITY_MODE'
 
 export class AppError extends Error {
   code: AppErrorCode
@@ -42,4 +44,4 @@ export class AppError extends Error {
     this.code = code
     this.status = status
   }
-  }
+      }
