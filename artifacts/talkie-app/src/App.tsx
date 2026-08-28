@@ -5,6 +5,7 @@ import AddContact from '@/pages/AddContact'
 import Talk from '@/pages/Talk'
 import Messages from '@/pages/Messages'
 import Profile from '@/pages/Profile'
+import EditProfile from '@/pages/EditProfile'
 import Settings from '@/pages/Settings'
 import Privacy from '@/pages/Privacy'
 import Blocked from '@/pages/Blocked'
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/talk/:userId" element={<RequireAuth><Talk /></RequireAuth>} />
         <Route path="/messages" element={<RequireAuth><Messages /></RequireAuth>} />
         <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+        <Route path="/profile/edit" element={<RequireAuth><EditProfile /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
         <Route path="/privacy" element={<RequireAuth><Privacy /></RequireAuth>} />
         <Route path="/blocked" element={<RequireAuth><Blocked /></RequireAuth>} />
@@ -41,4 +43,4 @@ export default function App() {
       <UpdateToast />
     </>
   )
-}
+          }
