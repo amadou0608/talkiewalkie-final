@@ -5,9 +5,8 @@ import { asyncHandler } from '../../utils/asyncHandler'
 import { signSession, verifySession } from '../../utils/jwt'
 import { SESSION_COOKIE } from '../../middleware/requireAuth'
 import { disconnectUserSockets, forceOffline } from '../../realtime/socket'
-import { deleteAccount, findById, loginUser, registerUser } from './auth.service'
-import { loginSchema, registerSchema } from './auth.schemas'
-
+import { deleteAccount, findById, loginUser, registerUser, updateProfile } from './auth.service'
+import { loginSchema, registerSchema, updateProfileSchema } from './auth.schemas'
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 // httpOnly : le JS du navigateur ne peut pas lire le cookie (protection XSS
@@ -72,7 +71,14 @@ export const me = asyncHandler(async (req: Request, res: Response) => {
   }
   res.status(200).json({ user })
 })
-
+export const updateProfileController = asyncHandler(async (req: Request, res: Response) => {
+  const parsed = updateProfileSchema.safeParse(req.body)
+  if (!parsed.success) {
+    throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Donnees invalides.')
+  }
+  const user = await updateProfile(req.userId!, parsed.data)
+  res.status(200).json({ user })
+})
 // Suppression de compte — Phase 11, section 13. Meme traitement qu'un
 // logout (sockets fermes, hors ligne notifie) avant l'effacement effectif,
 // pour que les contacts en ligne voient la deconnexion plutot qu'un statut
