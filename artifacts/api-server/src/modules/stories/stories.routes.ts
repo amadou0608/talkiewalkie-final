@@ -7,6 +7,7 @@ import {
   getMyStories,
   getContactsStories,
   viewStory,
+  getViewers,
   removeStory,
 } from './stories.controller'
 
@@ -19,4 +20,5 @@ storiesRouter.get('/mine', requireAuth, getMyStories)
 storiesRouter.get('/', requireAuth, getContactsStories)
 storiesRouter.get('/media/:filename', storyFile)
 storiesRouter.post('/:storyId/view', requireAuth, viewStory)
+storiesRouter.get('/:storyId/viewers', requireAuth, getViewers)
 storiesRouter.delete('/:storyId', requireAuth, removeStory)
