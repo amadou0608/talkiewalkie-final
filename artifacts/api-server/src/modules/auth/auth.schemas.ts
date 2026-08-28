@@ -26,3 +26,9 @@ export const loginSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
+export const updateProfileSchema = z.object({
+  displayName: z.string().trim().min(1, 'Le nom affiche est requis.').max(80).optional(),
+  bio: z.string().trim().max(150, '150 caracteres maximum.').optional(),
+})
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
