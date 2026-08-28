@@ -6,14 +6,14 @@ export type PresenceStatus = 'online' | 'away' | 'offline'
 
 export interface User {
   id: string
-  username: string          // identifiant public, ex: "saugui_47291"
+  username: string       // identifiant public, ex: "saugui_47291"
   displayName: string
-  avatarColor: string       // teinte generee pour l'avatar (pas d'upload en phase 1)
-  avatarUrl?: string        // Phase 20 : photo de profil uploadee, remplace avatarColor si presente
-  bio: string                // Phase 20 : statut/bio texte
+  avatarColor: string    // teinte generee pour l'avatar (pas d'upload en phase 1)
+  avatarUrl?: string      // Phase 20 : photo de profil uploadee, remplace avatarColor si presente
+  bio: string             // Phase 20 : statut/bio texte
   phoneNumber?: string
   status: PresenceStatus
-  lastSeen: string          // libelle relatif, ex: "il y a 2 min"
+  lastSeen: string        // libelle relatif, ex: "il y a 2 min"
 }
 
 export type ContactRelation = 'accepted' | 'pending' | 'blocked'
@@ -37,12 +37,15 @@ export interface VoiceMessage {
 }
 
 export type ChatMessageStatus = 'sent' | 'delivered' | 'read'
+
 export interface ChatMessageUser {
   id: string
   username: string
   displayName: string
   avatarColor: string
+  avatarUrl?: string
 }
+
 export interface ChatMessage {
   id: string
   senderId: string
@@ -64,4 +67,4 @@ export interface PrivacySettings {
   whoCanCall: 'contacts' | 'everyone'
   showStatus: boolean
   searchableByPhone: boolean
-  }
+}
