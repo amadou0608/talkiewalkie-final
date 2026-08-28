@@ -30,6 +30,8 @@ export type AppErrorCode =
   | 'INVALID_VIDEO_FILE'
   | 'VIDEO_TOO_LONG'
   | 'NOT_FOUND'
+  // Phase 21 — stories
+  | 'STORY_NOT_FOUND'
 
 export class AppError extends Error {
   code: AppErrorCode
@@ -40,4 +42,4 @@ export class AppError extends Error {
     this.code = code
     this.status = status
   }
-}
+  }
