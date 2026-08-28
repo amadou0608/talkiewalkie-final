@@ -20,7 +20,7 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
   const [groupIndex, setGroupIndex] = useState(startGroupIndex)
   const [storyIndex, setStoryIndex] = useState(0)
   const [progress, setProgress] = useState(0)
-  const frameRef = useRef<number>()
+  const frameRef = useRef<number | undefined>(undefined)
   const startRef = useRef<number>(0)
 
   const group = groups[groupIndex]
@@ -122,4 +122,4 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
       </div>
     </div>
   )
-}
+    }
