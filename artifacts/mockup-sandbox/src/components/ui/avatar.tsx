@@ -1,50 +1,51 @@
-"use client"
+interface AvatarProps {
+  name: string
+  color: string
+  avatarUrl?: string
+  size?: number
+  ring?: boolean
+}
 
-import * as React from "react"
-import * as AvatarPrimitive from "@radix-ui/react-avatar"
+// Avatar genere a partir des initiales — sauf si avatarUrl est fourni
+// (Phase 20 : photo de profil uploadee), auquel cas on affiche l'image.
+export default function Avatar({ name, color, avatarUrl, size = 44, ring = false }: AvatarProps) {
+  const initials = name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join('')
 
-import { cn } from "@/lib/utils"
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name}
+        className={`rounded-full object-cover shrink-0 ${ring ? 'ring-2 ring-offset-2 ring-offset-ink' : ''}`}
+        style={{
+          width: size,
+          height: size,
+          ...(ring ? ({ '--tw-ring-color': color } as any) : {}),
+        }}
+      />
+    )
+  }
 
-const Avatar = React.forwardRef<
-  React.ElementRef<typeof AvatarPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Root
-    ref={ref}
-    className={cn(
-      "relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
-      className
-    )}
-    {...props}
-  />
-))
-Avatar.displayName = AvatarPrimitive.Root.displayName
-
-const AvatarImage = React.forwardRef<
-  React.ElementRef<typeof AvatarPrimitive.Image>,
-  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
->(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Image
-    ref={ref}
-    className={cn("aspect-square h-full w-full", className)}
-    {...props}
-  />
-))
-AvatarImage.displayName = AvatarPrimitive.Image.displayName
-
-const AvatarFallback = React.forwardRef<
-  React.ElementRef<typeof AvatarPrimitive.Fallback>,
-  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback>
->(({ className, ...props }, ref) => (
-  <AvatarPrimitive.Fallback
-    ref={ref}
-    className={cn(
-      "flex h-full w-full items-center justify-center rounded-full bg-muted",
-      className
-    )}
-    {...props}
-  />
-))
-AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName
-
-export { Avatar, AvatarImage, AvatarFallback }
+  return (
+    <div
+      className={`flex items-center justify-center rounded-full font-display font-semibold text-ink shrink-0 ${
+        ring ? 'ring-2 ring-offset-2 ring-offset-ink' : ''
+      }`}
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: color,
+        fontSize: size * 0.38,
+        ...(ring ? ({ '--tw-ring-color': color } as any) : {}),
+      }}
+      aria-hidden="true"
+    >
+      {initials || '?'}
+    </div>
+  )
+}
