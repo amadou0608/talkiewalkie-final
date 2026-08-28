@@ -7,6 +7,8 @@ import { AuthApiError } from './authApi'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
+export type StoryVisibilityMode = 'all' | 'except' | 'only'
+
 export interface Story {
   id: string
   userId: string
@@ -14,6 +16,7 @@ export interface Story {
   createdAt: string
   expiresAt: string
   viewed: boolean
+  visibilityMode: StoryVisibilityMode
 }
 
 export interface StoryGroup {
@@ -26,6 +29,14 @@ export interface StoryGroup {
   }
   stories: Story[]
   hasUnviewed: boolean
+}
+
+export interface StoryViewer {
+  userId: string
+  username: string
+  displayName: string
+  avatarColor: string
+  avatarUrl?: string
 }
 
 async function request<T>(path: string, options: RequestInit): Promise<T> {
@@ -56,9 +67,17 @@ async function request<T>(path: string, options: RequestInit): Promise<T> {
   return body as T
 }
 
-export async function apiUploadStory(file: File): Promise<Story> {
+export async function apiUploadStory(
+  file: File,
+  visibilityMode: StoryVisibilityMode = 'all',
+  targetUserIds: string[] = [],
+): Promise<Story> {
   const formData = new FormData()
   formData.append('image', file)
+  formData.append('visibilityMode', visibilityMode)
+  if (visibilityMode !== 'all') {
+    formData.append('targetUserIds', JSON.stringify(targetUserIds))
+  }
   const { story } = await request<{ story: Story }>('/stories', {
     method: 'POST',
     headers: { 'X-Requested-With': 'talkie-web' },
@@ -81,6 +100,11 @@ export async function apiViewStory(storyId: string): Promise<void> {
   await request<void>(`/stories/${storyId}/view`, { method: 'POST' })
 }
 
+export async function apiStoryViewers(storyId: string): Promise<StoryViewer[]> {
+  const { viewers } = await request<{ viewers: StoryViewer[] }>(`/stories/${storyId}/viewers`, { method: 'GET' })
+  return viewers
+}
+
 export async function apiDeleteStory(storyId: string): Promise<void> {
   await request<void>(`/stories/${storyId}`, { method: 'DELETE' })
-      }
+  }
