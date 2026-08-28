@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ChevronRight, Lock, Ban, LogOut, QrCode, Trash2 } from 'lucide-react'
+import { ChevronRight, Lock, Ban, LogOut, QrCode, Trash2, Pencil } from 'lucide-react'
 import TopBar from '@/components/TopBar'
 import BottomNav from '@/components/BottomNav'
 import Avatar from '@/components/Avatar'
 import { useAuth } from '@/context/AuthContext'
+import { resolveAvatarUrl } from '@/lib/authApi'
 
 const LINKS = [
   { to: '/privacy', label: 'Confidentialite', icon: Lock },
@@ -56,12 +57,25 @@ export default function Profile() {
 
       <main className="mx-auto max-w-md px-5 pt-6">
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-panel p-6">
-          <Avatar name={user.displayName} color={user.avatarColor} size={72} ring />
+          <Avatar
+            name={user.displayName}
+            color={user.avatarColor}
+            avatarUrl={resolveAvatarUrl(user.avatarUrl)}
+            size={72}
+            ring
+          />
           <div className="text-center">
             <p className="font-display text-lg font-semibold text-paper">{user.displayName}</p>
             <p className="callsign text-sm text-paperDim">@{user.username}</p>
           </div>
-          <button className="mt-1 flex items-center gap-2 rounded-full border border-line px-4 py-1.5 text-xs text-paperDim hover:bg-panel2">
+          <Link
+            to="/profile/edit"
+            className="mt-1 flex items-center gap-2 rounded-full border border-line px-4 py-1.5 text-xs text-paperDim hover:bg-panel2"
+          >
+            <Pencil size={14} />
+            Modifier le profil
+          </Link>
+          <button className="flex items-center gap-2 rounded-full border border-line px-4 py-1.5 text-xs text-paperDim hover:bg-panel2">
             <QrCode size={14} />
             Mon QR code
           </button>
@@ -113,4 +127,4 @@ export default function Profile() {
       <BottomNav />
     </div>
   )
-}
+    }
