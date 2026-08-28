@@ -6,7 +6,7 @@
   "description": "API backend de Talkie Chat — auth + PostgreSQL + Socket.IO.",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp -r src/db/migrations dist/db/migrations",
     "start": "node dist/db/migrate.js && node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/db/migrate.ts",
