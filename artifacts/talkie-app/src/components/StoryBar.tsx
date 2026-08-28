@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import Avatar from '@/components/Avatar'
+import StoryVisibilityPicker from '@/components/StoryVisibilityPicker'
 import { useAuth } from '@/context/AuthContext'
 import { resolveAvatarUrl } from '@/lib/authApi'
-import { apiContactsStories, apiMyStories, apiUploadStory, type StoryGroup } from '@/lib/storiesApi'
+import {
+  apiContactsStories,
+  apiMyStories,
+  apiUploadStory,
+  type StoryGroup,
+  type StoryVisibilityMode,
+} from '@/lib/storiesApi'
 
 interface StoryBarProps {
   onOpenGroup: (groups: StoryGroup[], startIndex: number) => void
@@ -16,6 +23,7 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
   const [groups, setGroups] = useState<StoryGroup[]>([])
   const [hasOwnStories, setHasOwnStories] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
@@ -27,12 +35,24 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
     load()
   }, [])
 
-  const handlePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setPendingFile(file)
+    e.target.value = ''
+  }
+
+  const handleVisibilityCancel = () => {
+    setPendingFile(null)
+  }
+
+  const handleVisibilityConfirm = async (mode: StoryVisibilityMode, targetUserIds: string[]) => {
+    const file = pendingFile
+    if (!file) return
+    setPendingFile(null)
     setUploading(true)
     try {
-      await apiUploadStory(file)
+      await apiUploadStory(file, mode, targetUserIds)
       const myStories = await apiMyStories()
       setHasOwnStories(myStories.length > 0)
       if (user && myStories.length > 0) {
@@ -53,7 +73,6 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
       // Erreur silencieuse ici : l'utilisateur peut reessayer immediatement.
     } finally {
       setUploading(false)
-      e.target.value = ''
     }
   }
 
@@ -115,6 +134,10 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
           <span className="max-w-[64px] truncate text-[11px] text-paperDim">{group.user.displayName}</span>
         </button>
       ))}
+
+      {pendingFile && (
+        <StoryVisibilityPicker onConfirm={handleVisibilityConfirm} onCancel={handleVisibilityCancel} />
+      )}
     </div>
   )
 }
