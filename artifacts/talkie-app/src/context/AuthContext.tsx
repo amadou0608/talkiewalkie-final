@@ -2,7 +2,7 @@
 // Enveloppe le service mock `lib/authApi.ts`. En Phase 3, seul authApi.ts
 // changera (vrais appels reseau) ; ce contexte restera identique.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { apiDeleteAccount, apiGetSession, apiLogin, apiLogout, apiRegister, type RegisterPayload } from '@/lib/authApi'
+import { apiDeleteAccount, apiGetSession, apiLogin, apiLogout, apiRegister, apiUpdateProfile, apiUploadAvatar, type RegisterPayload, type UpdateProfilePayload } from '@/lib/authApi'
 import type { User } from '@/types'
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
@@ -15,6 +15,8 @@ interface AuthContextValue {
   logout: () => Promise<void>
   // Phase 11, section 13 : suppression de compte et de ses donnees.
   deleteAccount: () => Promise<void>
+  updateProfile: (payload: UpdateProfilePayload) => Promise<void>
+  uploadAvatar: (file: File) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -60,9 +62,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('unauthenticated')
   }, [])
 
+  const updateProfile = useCallback(async (payload: UpdateProfilePayload) => {
+    const updated = await apiUpdateProfile(payload)
+    setUser(updated)
+  }, [])
+
+  const uploadAvatar = useCallback(async (file: File) => {
+    const updated = await apiUploadAvatar(file)
+    setUser(updated)
+  }, [])
+
   const value = useMemo(
-    () => ({ status, user, login, register, logout, deleteAccount }),
-    [status, user, login, register, logout, deleteAccount],
+    () => ({ status, user, login, register, logout, deleteAccount, updateProfile, uploadAvatar }),
+    [status, user, login, register, logout, deleteAccount, updateProfile, uploadAvatar],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -72,4 +84,4 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth doit etre utilise a l\'interieur de <AuthProvider>')
   return ctx
-}
+  }
