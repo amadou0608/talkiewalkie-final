@@ -3,7 +3,7 @@ import { AppError } from '../../utils/AppError'
 import { isAcceptedContact } from '../contacts/contacts.service'
 import { avatarColorFor } from '../../utils/presentation'
 
-export interface MessageUser { id: string; username: string; displayName: string; avatarColor: string }
+export interface MessageUser { id: string; username: string; displayName: string; avatarColor: string; avatarUrl?: string }
 export interface MessageItem {
   id: string
   senderId: string
@@ -22,8 +22,8 @@ export interface MessageItem {
 
 type MessageRow = Omit<MessageItem, 'createdAt' | 'editedAt' | 'deletedAt' | 'sender' | 'receiver'> & {
   created_at: Date; edited_at: Date | null; deleted_at: Date | null
-  sender_username: string; sender_display_name: string
-  receiver_username: string; receiver_display_name: string
+  sender_username: string; sender_display_name: string; sender_avatar_url: string | null
+  receiver_username: string; receiver_display_name: string; receiver_avatar_url: string | null
 }
 
 function mapMessage(row: MessageRow): MessageItem {
@@ -32,8 +32,8 @@ function mapMessage(row: MessageRow): MessageItem {
     content: row.content, fileUrl: row.fileUrl, durationSec: row.durationSec, status: row.status,
     createdAt: row.created_at.toISOString(), editedAt: row.edited_at?.toISOString() ?? null,
     deletedAt: row.deleted_at?.toISOString() ?? null,
-    sender: { id: row.senderId, username: row.sender_username, displayName: row.sender_display_name, avatarColor: avatarColorFor(row.sender_username) },
-    receiver: { id: row.receiverId, username: row.receiver_username, displayName: row.receiver_display_name, avatarColor: avatarColorFor(row.receiver_username) },
+    sender: { id: row.senderId, username: row.sender_username, displayName: row.sender_display_name, avatarUrl: row.sender_avatar_url ?? undefined, avatarColor: avatarColorFor(row.sender_username) },
+    receiver: { id: row.receiverId, username: row.receiver_username, displayName: row.receiver_display_name, avatarUrl: row.receiver_avatar_url ?? undefined, avatarColor: avatarColorFor(row.receiver_username) },
   }
 }
 
@@ -41,8 +41,8 @@ const baseSelect = `
   SELECT m.id, m.sender_id AS "senderId", m.receiver_id AS "receiverId", m.type,
          m.content, m.file_url AS "fileUrl", m.duration_sec AS "durationSec", m.status,
          m.created_at, m.edited_at, m.deleted_at,
-          su.username AS sender_username, su.display_name AS sender_display_name,
-          ru.username AS receiver_username, ru.display_name AS receiver_display_name
+          su.username AS sender_username, su.display_name AS sender_display_name, su.avatar_url AS sender_avatar_url,
+          ru.username AS receiver_username, ru.display_name AS receiver_display_name, ru.avatar_url AS receiver_avatar_url
     FROM messages m
     JOIN users su ON su.id = m.sender_id
     JOIN users ru ON ru.id = m.receiver_id`
@@ -130,14 +130,14 @@ export async function getConversationSummaries(userId: string) {
       ) m
       ORDER BY other_id, created_at DESC
     )
-    SELECT c.*, u.username, u.display_name,
+    SELECT c.*, u.username, u.display_name, u.avatar_url,
       (SELECT COUNT(*)::int FROM messages unread WHERE unread.sender_id = c.other_id AND unread.receiver_id = $1 AND unread.status <> 'read' AND unread.deleted_at IS NULL) AS unread_count
     FROM conversations c JOIN users u ON u.id = c.other_id
     ORDER BY c.created_at DESC`, [userId])
   return result.rows.map((r) => ({
     userId: r.other_id, messageId: r.id, type: r.type, content: r.content, createdAt: r.created_at.toISOString(),
     status: r.status, senderId: r.sender_id, unreadCount: r.unread_count,
-     user: { id: r.other_id, username: r.username, displayName: r.display_name, avatarColor: avatarColorFor(r.username) },
+     user: { id: r.other_id, username: r.username, displayName: r.display_name, avatarUrl: r.avatar_url ?? undefined, avatarColor: avatarColorFor(r.username) },
   }))
 }
 
@@ -204,4 +204,4 @@ export async function getChatMessageFile(messageId: string, requesterId: string,
     throw new AppError('FILE_NOT_FOUND', 'Fichier introuvable ou accès refusé.', 404)
   }
   return { ...row, mimeType: row.mimeType ?? 'application/octet-stream' }
-}
+  }
