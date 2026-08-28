@@ -30,6 +30,8 @@ interface ApiUser {
   username: string
   displayName: string
   avatarColor: string
+  avatarUrl?: string
+  bio: string
   phoneNumber?: string
   status: PresenceStatus
   lastSeen: string
@@ -122,6 +124,30 @@ export async function apiDeleteAccount(): Promise<void> {
   await request<void>('/auth/me', { method: 'DELETE' })
 }
 
+export interface UpdateProfilePayload {
+  displayName?: string
+  bio?: string
+}
+
+export async function apiUpdateProfile(payload: UpdateProfilePayload): Promise<User> {
+  const { user } = await request<{ user: ApiUser }>('/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+  return user
+}
+
+export async function apiUploadAvatar(file: File): Promise<User> {
+  const formData = new FormData()
+  formData.append('avatar', file)
+  const { user } = await request<{ user: ApiUser }>('/auth/avatar', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'talkie-web' },
+    body: formData,
+  })
+  return user
+}
+
 // Restaure la session au chargement de l'app via le cookie httpOnly. Une
 // reponse 401 est un cas normal (pas de session) : on renvoie null plutot
 // que de faire remonter une erreur.
@@ -133,4 +159,4 @@ export async function apiGetSession(): Promise<User | null> {
     if (err instanceof AuthApiError && err.code === 'UNAUTHENTICATED') return null
     return null
   }
-}
+  }
