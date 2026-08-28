@@ -58,7 +58,24 @@ export async function loginUser(input: LoginInput): Promise<PublicUser> {
 export async function markOffline(userId: string): Promise<void> {
   await pool.query(`UPDATE users SET is_online = false, last_seen = now() WHERE id = $1`, [userId])
 }
-
+export async function updateProfile(
+  userId: string,
+  updates: { displayName?: string; bio?: string; avatarUrl?: string }
+): Promise<PublicUser> {
+  const result = await pool.query<UserRow>(
+    `UPDATE users SET
+      display_name = COALESCE($2, display_name),
+      bio = COALESCE($3, bio),
+      avatar_url = COALESCE($4, avatar_url)
+    WHERE id = $1
+    RETURNING *`,
+    [userId, updates.displayName ?? null, updates.bio ?? null, updates.avatarUrl ?? null]
+  )
+  if (result.rowCount === 0) {
+    throw new AppError('USER_NOT_FOUND', 'Utilisateur introuvable.', 404)
+  }
+  return toPublicUser(result.rows[0])
+                                     }
 // Suppression de compte — Phase 11 (section 13 : "Permettre a l'utilisateur
 // de supprimer son compte et ses donnees.").
 //
