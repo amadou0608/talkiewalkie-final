@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express'
 import { asyncHandler } from '../../utils/asyncHandler'
 import { AppError } from '../../utils/AppError'
-import { saveStoryImage } from './stories.storage'
+import { saveStoryImage, saveStoryVideo } from './stories.storage'
 import {
   createStory,
   listMyStories,
@@ -10,20 +10,15 @@ import {
   getStoryViewers,
   deleteStory,
 } from './stories.service'
-import type { Story, StoryVisibilityMode } from './stories.types'
+import type { Story, StoryRow, StoryVisibilityMode, StoryType } from './stories.types'
 
-function toStory(row: {
-  id: string
-  user_id: string
-  image_url: string
-  created_at: Date
-  expires_at: Date
-  visibility_mode: StoryVisibilityMode
-}): Story {
+function toStory(row: StoryRow): Story {
   return {
     id: row.id,
     userId: row.user_id,
     imageUrl: row.image_url,
+    type: row.type,
+    textContent: row.text_content,
     createdAt: row.created_at.toISOString(),
     expiresAt: row.expires_at.toISOString(),
     viewed: false,
@@ -32,7 +27,10 @@ function toStory(row: {
 }
 
 export const uploadStory = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.file) throw new AppError('INVALID_IMAGE_FILE', 'Aucune image recue.', 400)
+  const type: StoryType = (req.body.type as StoryType) || (req.file ? 'image' : 'text')
+  if (!['image', 'video', 'text'].includes(type)) {
+    throw new AppError('INVALID_STORY_TYPE', 'Type de story invalide.', 400)
+  }
 
   const visibilityMode: StoryVisibilityMode = (req.body.visibilityMode as StoryVisibilityMode) || 'all'
   if (!['all', 'except', 'only'].includes(visibilityMode)) {
@@ -49,8 +47,23 @@ export const uploadStory = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  const imageUrl = saveStoryImage(req.file)
-  const story = await createStory(req.userId!, imageUrl, visibilityMode, targetUserIds)
+  let imageUrl: string | null = null
+  let textContent: string | null = null
+
+  if (type === 'text') {
+    textContent = typeof req.body.textContent === 'string' ? req.body.textContent.trim() : ''
+    if (!textContent) throw new AppError('INVALID_TEXT_CONTENT', 'Le texte du statut est vide.', 400)
+  } else if (type === 'image') {
+    if (!req.file) throw new AppError('INVALID_IMAGE_FILE', 'Aucune image recue.', 400)
+    imageUrl = saveStoryImage(req.file)
+    textContent = typeof req.body.textContent === 'string' && req.body.textContent.trim() ? req.body.textContent.trim() : null
+  } else if (type === 'video') {
+    if (!req.file) throw new AppError('INVALID_VIDEO_FILE', 'Aucune video recue.', 400)
+    imageUrl = saveStoryVideo(req.file)
+    textContent = typeof req.body.textContent === 'string' && req.body.textContent.trim() ? req.body.textContent.trim() : null
+  }
+
+  const story = await createStory(req.userId!, type, imageUrl, textContent, visibilityMode, targetUserIds)
   res.status(201).json({ story: toStory(story) })
 })
 
