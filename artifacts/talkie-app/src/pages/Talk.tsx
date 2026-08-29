@@ -5,7 +5,7 @@ import Avatar from '@/components/Avatar'
 import StatusDot from '@/components/StatusDot'
 import { useContacts } from '@/context/ContactsContext'
 import { useAuth } from '@/context/AuthContext'
-
+import { compressImage } from '@/lib/imageCompression'
 import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSendTextMessage, apiSendVoiceChatMessage, apiSendImageMessage, apiSendVideoMessage, apiEditTextMessage, apiGetEditHistory, apiDeleteMessage, chatVoiceUrl, chatImageUrl, chatVideoUrl } from '@/lib/messagesApi'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 import { connectSocket, getSocket } from '@/lib/socket'
