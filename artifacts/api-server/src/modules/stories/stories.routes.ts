@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { requireAuth } from '../../middleware/requireAuth'
-import { MAX_STORY_IMAGE_BYTES, storyFile } from './stories.storage'
+import { MAX_STORY_VIDEO_BYTES, storyFile } from './stories.storage'
 import {
   uploadStory,
   getMyStories,
@@ -13,9 +13,9 @@ import {
 
 export const storiesRouter = Router()
 
-const storyUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_STORY_IMAGE_BYTES } })
+const storyUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_STORY_VIDEO_BYTES } })
 
-storiesRouter.post('/', requireAuth, storyUpload.single('image'), uploadStory)
+storiesRouter.post('/', requireAuth, storyUpload.single('media'), uploadStory)
 storiesRouter.get('/mine', requireAuth, getMyStories)
 storiesRouter.get('/', requireAuth, getContactsStories)
 storiesRouter.get('/media/:filename', storyFile)
