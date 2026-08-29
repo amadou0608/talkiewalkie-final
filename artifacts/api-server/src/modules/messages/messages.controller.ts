@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import { asyncHandler } from '../../utils/asyncHandler'
 import { AppError } from '../../utils/AppError'
 import { createTextMessageSchema, listMessagesQuerySchema, messageIdParamSchema } from './messages.schemas'
-import { createTextMessage, listConversation, markDelivered, markRead, markConversationRead, editTextMessage, deleteMessage, getConversationSummaries } from './messages.service'
+import { createTextMessage, listConversation, markDelivered, markRead, markConversationRead, editTextMessage, getEditHistory, deleteMessage, getConversationSummaries } from './messages.service'
 import { hasActiveSocket, notifyUser } from '../../realtime/socket'
 
 export const list = asyncHandler(async (req: Request, res: Response) => {
@@ -56,6 +56,13 @@ export const edit = asyncHandler(async (req: Request, res: Response) => {
   const message = await editTextMessage(req.userId!, parsed.data.messageId, parsed.data.content)
   notifyUser(message.receiverId, 'message:updated', message)
   res.json({ message })
+})
+
+export const editHistory = asyncHandler(async (req: Request, res: Response) => {
+  const parsed = messageIdParamSchema.safeParse(req.params)
+  if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Identifiant de message invalide.')
+  const history = await getEditHistory(req.userId!, parsed.data.messageId)
+  res.json({ history })
 })
 
 export const remove = asyncHandler(async (req: Request, res: Response) => {
