@@ -5,11 +5,11 @@ import Avatar from '@/components/Avatar'
 import StatusDot from '@/components/StatusDot'
 import { useContacts } from '@/context/ContactsContext'
 import { useAuth } from '@/context/AuthContext'
-import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSendTextMessage, apiSendVoiceChatMessage, apiSendImageMessage, apiSendVideoMessage, apiEditTextMessage, apiDeleteMessage, chatVoiceUrl, chatImageUrl, chatVideoUrl } from '@/lib/messagesApi'
-import { compressImage } from '@/lib/imageCompression'
+import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSe
+import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSendTextMessage, apiSendVoiceChatMessage, apiSendImageMessage, apiSendVideoMessage, apiEditTextMessage, apiGetEditHistory, apiDeleteMessage, chatVoiceUrl, chatImageUrl, chatVideoUrl } from '@/lib/messagesApi'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 import { connectSocket, getSocket } from '@/lib/socket'
-import type { ChatMessage } from '@/types'
+import type { ChatMessage, MessageEditHistoryEntry } from '@/types'
 
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
@@ -36,6 +36,9 @@ export default function Talk() {
   const [typing, setTyping] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [historyFor, setHistoryFor] = useState<string | null>(null)
+const [historyEntries, setHistoryEntries] = useState<MessageEditHistoryEntry[]>([])
+const [historyLoading, setHistoryLoading] = useState(false)
   const recorder = useVoiceRecorder()
   const [voiceSending, setVoiceSending] = useState(false)
   const [imageSending, setImageSending] = useState(false)
@@ -244,7 +247,19 @@ export default function Talk() {
       setEditText('')
     } catch { setError('Le message n’a pas pu être modifié.') }
   }
-
+async function openHistory(messageId: string) {
+    setHistoryFor(messageId)
+    setHistoryLoading(true)
+    try {
+      const entries = await apiGetEditHistory(messageId)
+      setHistoryEntries(entries)
+    } catch {
+      setError('Impossible de charger l’historique.')
+      setHistoryFor(null)
+    } finally {
+      setHistoryLoading(false)
+    }
+        }
   async function removeMessage(messageId: string) {
     if (!window.confirm('Supprimer ce message pour tout le monde ?')) return
     try { await apiDeleteMessage(messageId); setMessages((prev) => prev.filter((m) => m.id !== messageId)) }
@@ -340,7 +355,9 @@ export default function Talk() {
                     ) : (
                       <>
                         <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
-                        {message.editedAt && <span className="ml-1 text-[9px] opacity-60">modifié</span>}
+                        {message.editedAt && (
+  <button type="button" onClick={() => void openHistory(message.id)} className="ml-1 text-[9px] underline opacity-60 hover:opacity-100">modifié</button>
+)}
                         {mine && !message.editedAt && editRemainingMinutes(message.createdAt) > 0 && (
                           <span className="ml-1 text-[9px] opacity-40">· modifiable {editRemainingMinutes(message.createdAt)} min</span>
                         )}
@@ -447,6 +464,26 @@ export default function Talk() {
           </div>
         </div>
       )}
+      {historyFor && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true">
+    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        <p className="font-display text-sm font-semibold text-paper">Historique des modifications</p>
+        <button type="button" onClick={() => setHistoryFor(null)} aria-label="Fermer l’historique" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
+      </div>
+      <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">
+        {historyLoading && <p className="text-sm text-paperDim">Chargement…</p>}
+        {!historyLoading && historyEntries.length === 0 && <p className="text-sm text-paperDim">Aucune version antérieure.</p>}
+        {!historyLoading && historyEntries.map((entry, i) => (
+          <div key={i} className="rounded-xl border border-line bg-panel2 px-3 py-2">
+            <p className="whitespace-pre-wrap break-words text-sm text-paper">{entry.previousContent}</p>
+            <p className="mt-1 text-[10px] text-paperDim">{timeLabel(entry.editedAt)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+)}
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" onClick={() => setLightbox(null)}>
           <button type="button" onClick={() => setLightbox(null)} aria-label="Fermer" className="absolute right-4 top-4 rounded-full bg-black/50 p-3 text-white"><X size={22} /></button>
