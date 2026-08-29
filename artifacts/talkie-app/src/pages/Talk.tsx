@@ -37,6 +37,7 @@ export default function Talk() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [historyFor, setHistoryFor] = useState<string | null>(null)
+  const [pendingSend, setPendingSend] = useState<{ content: string; timeoutId: ReturnType<typeof setTimeout> } | null>(null)
 const [historyEntries, setHistoryEntries] = useState<MessageEditHistoryEntry[]>([])
 const [historyLoading, setHistoryLoading] = useState(false)
   const recorder = useVoiceRecorder()
