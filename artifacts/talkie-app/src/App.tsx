@@ -3,7 +3,7 @@ import Home from '@/pages/Home'
 import Contacts from '@/pages/Contacts'
 import AddContact from '@/pages/AddContact'
 import Talk from '@/pages/Talk'
-import Messages from '@/pages/Messages'
+import Status from '@/pages/Status'
 import Profile from '@/pages/Profile'
 import EditProfile from '@/pages/EditProfile'
 import Settings from '@/pages/Settings'
@@ -30,7 +30,7 @@ export default function App() {
         <Route path="/contacts" element={<RequireAuth><Contacts /></RequireAuth>} />
         <Route path="/contacts/add" element={<RequireAuth><AddContact /></RequireAuth>} />
         <Route path="/talk/:userId" element={<RequireAuth><Talk /></RequireAuth>} />
-        <Route path="/messages" element={<RequireAuth><Messages /></RequireAuth>} />
+        <Route path="/status" element={<RequireAuth><Status /></RequireAuth>} />
         <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
         <Route path="/profile/edit" element={<RequireAuth><EditProfile /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
