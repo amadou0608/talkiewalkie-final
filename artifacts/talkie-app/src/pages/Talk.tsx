@@ -6,7 +6,7 @@ import StatusDot from '@/components/StatusDot'
 import { useContacts } from '@/context/ContactsContext'
 import { useAuth } from '@/context/AuthContext'
 import { compressImage } from '@/lib/imageCompression'
-import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSendTextMessage, apiSendVoiceChatMessage, apiSendImageMessage, apiSendVideoMessage, apiEditTextMessage, apiGetEditHistory, apiDeleteMessage, chatVoiceUrl, chatImageUrl, chatVideoUrl } from '@/lib/messagesApi'
+import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSendTextMessage, apiSendVoiceChatMessage, apiEditVoiceMessage, apiSendImageMessage, apiSendVideoMessage, apiEditTextMessage, apiGetEditHistory, apiDeleteMessage, chatVoiceUrl, chatImageUrl, chatVideoUrl } from '@/lib/messagesApi'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 import { connectSocket, getSocket } from '@/lib/socket'
 import type { ChatMessage, MessageEditHistoryEntry } from '@/types'
@@ -38,8 +38,9 @@ export default function Talk() {
   const [editText, setEditText] = useState('')
   const [historyFor, setHistoryFor] = useState<string | null>(null)
   const [pendingSend, setPendingSend] = useState<{ content: string; timeoutId: ReturnType<typeof setTimeout> } | null>(null)
-const [historyEntries, setHistoryEntries] = useState<MessageEditHistoryEntry[]>([])
-const [historyLoading, setHistoryLoading] = useState(false)
+  const [editingVoiceId, setEditingVoiceId] = useState<string | null>(null)
+  const [historyEntries, setHistoryEntries] = useState<MessageEditHistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const recorder = useVoiceRecorder()
   const [voiceSending, setVoiceSending] = useState(false)
   const [imageSending, setImageSending] = useState(false)
@@ -137,7 +138,6 @@ const [historyLoading, setHistoryLoading] = useState(false)
   }
 
   const canSend = useMemo(() => text.trim().length > 0 && !sending && !!userId, [text, sending, userId])
-
   async function actuallySendMessage(content: string) {
     if (!userId) return
     setSending(true)
@@ -171,7 +171,7 @@ const [historyLoading, setHistoryLoading] = useState(false)
     clearTimeout(pendingSend.timeoutId)
     setText(pendingSend.content)
     setPendingSend(null)
-                                                                                 }
+  }
 
   function handleImageFile(file?: File) {
     if (!file || !userId || imageSending) return
@@ -264,7 +264,8 @@ const [historyLoading, setHistoryLoading] = useState(false)
       setEditText('')
     } catch { setError('Le message n’a pas pu être modifié.') }
   }
-async function openHistory(messageId: string) {
+
+  async function openHistory(messageId: string) {
     setHistoryFor(messageId)
     setHistoryLoading(true)
     try {
@@ -276,7 +277,8 @@ async function openHistory(messageId: string) {
     } finally {
       setHistoryLoading(false)
     }
-        }
+  }
+
   async function removeMessage(messageId: string) {
     if (!window.confirm('Supprimer ce message pour tout le monde ?')) return
     try { await apiDeleteMessage(messageId); setMessages((prev) => prev.filter((m) => m.id !== messageId)) }
@@ -291,10 +293,17 @@ async function openHistory(messageId: string) {
       try {
         const result = await recorder.stop()
         if (!result) return
-        const message = await apiSendVoiceChatMessage(userId, result.blob, result.durationSec)
-        mergeMessage(message)
+        if (editingVoiceId) {
+          const message = await apiEditVoiceMessage(editingVoiceId, result.blob, result.durationSec)
+          mergeMessage(message)
+          setEditingVoiceId(null)
+        } else {
+          const message = await apiSendVoiceChatMessage(userId, result.blob, result.durationSec)
+          mergeMessage(message)
+        }
       } catch {
-        setError('Le message vocal n’a pas pu être envoyé.')
+        setError(editingVoiceId ? 'Le vocal n\'a pas pu être modifié.' : 'Le message vocal n\'a pas pu être envoyé.')
+        setEditingVoiceId(null)
       } finally {
         setVoiceSending(false)
       }
@@ -303,8 +312,23 @@ async function openHistory(messageId: string) {
     try {
       await recorder.start()
     } catch {
-      setError('Le microphone n’a pas pu être activé.')
+      setError('Le microphone n\'a pas pu être activé.')
+      setEditingVoiceId(null)
     }
+  }
+
+  function startEditVoice(messageId: string) {
+    if (recorder.state === 'recording' || voiceSending) return
+    setEditingVoiceId(messageId)
+    recorder.start().catch(() => {
+      setError('Le microphone n\'a pas pu être activé.')
+      setEditingVoiceId(null)
+    })
+  }
+
+  function cancelEditVoice() {
+    if (recorder.state === 'recording') recorder.cancel()
+    setEditingVoiceId(null)
   }
 
   useEffect(() => () => {
@@ -314,8 +338,7 @@ async function openHistory(messageId: string) {
 
   if (!otherUser) {
     return <div className="flex min-h-screen items-center justify-center px-6 text-center text-sm text-paperDim">Contact introuvable.</div>
-  }
-
+}
   return (
     <div className="flex min-h-screen flex-col">
       <header className="safe-top flex items-center gap-3 border-b border-line px-4 pb-3 pt-4">
@@ -356,7 +379,12 @@ async function openHistory(messageId: string) {
                           }}
                           aria-label={`Message vocal de ${message.sender.displayName}`}
                         />
-                        <p className={`mt-1 text-[10px] ${mine ? 'text-ink/70' : 'text-paperDim'}`}>{message.durationSec ?? 0}s</p>
+                        <div className={`mt-1 flex items-center justify-between text-[10px] ${mine ? 'text-ink/70' : 'text-paperDim'}`}>
+                          <span>{message.durationSec ?? 0}s</span>
+                          {mine && !message.deletedAt && editRemainingMinutes(message.createdAt) > 0 && (
+                            <button type="button" title={`Modifiable encore ${editRemainingMinutes(message.createdAt)} min`} onClick={() => startEditVoice(message.id)} className="ml-1 opacity-70 hover:opacity-100"><Pencil size={11} /></button>
+                          )}
+                        </div>
                       </div>
                     ) : message.type === 'image' ? (
                       <button type="button" onClick={() => setLightbox(chatImageUrl(message.id))} className="block overflow-hidden rounded-xl" aria-label="Ouvrir la photo en plein écran">
@@ -373,8 +401,8 @@ async function openHistory(messageId: string) {
                       <>
                         <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
                         {message.editedAt && (
-  <button type="button" onClick={() => void openHistory(message.id)} className="ml-1 text-[9px] underline opacity-60 hover:opacity-100">modifié</button>
-)}
+                          <button type="button" onClick={() => void openHistory(message.id)} className="ml-1 text-[9px] underline opacity-60 hover:opacity-100">modifié</button>
+                        )}
                         {mine && !message.editedAt && editRemainingMinutes(message.createdAt) > 0 && (
                           <span className="ml-1 text-[9px] opacity-40">· modifiable {editRemainingMinutes(message.createdAt)} min</span>
                         )}
@@ -404,19 +432,20 @@ async function openHistory(messageId: string) {
         )}
         {typing && <p className="mt-3 text-xs italic text-paperDim">{otherUser.displayName} est en train d’écrire…</p>}
         {error && <p className="mt-3 text-center text-xs text-alert">{error}</p>}
-      </main><form onSubmit={handleSubmit} className="safe-bottom border-t border-line bg-ink/95 px-4 py-3 backdrop-blur">
+      </main>
+      <form onSubmit={handleSubmit} className="safe-bottom border-t border-line bg-ink/95 px-4 py-3 backdrop-blur">
         {pendingSend && (
-        <div className="mx-auto mb-2 flex max-w-md items-center justify-between rounded-xl border border-line bg-panel2 px-4 py-2">
-          <span className="text-sm text-paper">Envoi dans quelques secondes…</span>
-          <button type="button" onClick={cancelPendingSend} className="text-sm font-semibold text-transmit">Annuler</button>
-        </div>
-      )}
+          <div className="mx-auto mb-2 flex max-w-md items-center justify-between rounded-xl border border-line bg-panel2 px-4 py-2">
+            <span className="text-sm text-paper">Envoi dans quelques secondes…</span>
+            <button type="button" onClick={cancelPendingSend} className="text-sm font-semibold text-transmit">Annuler</button>
+          </div>
+        )}
         <div className="mx-auto flex max-w-md items-end gap-2">
           {recorder.state === 'recording' ? (
-            <div className="flex min-h-11 flex-1 items-center gap-3 rounded-2xl border border-alert/40 bg-panel px-4">
+            <div className="flex h-11 flex-1 items-center gap-3 rounded-2xl border border-alert/40 bg-panel px-4">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-alert" aria-hidden="true" />
-              <span className="flex-1 text-sm text-paper">Enregistrement… {recorder.elapsedSec}s</span>
-              <button type="button" onClick={recorder.cancel} aria-label="Annuler le vocal" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={17} /></button>
+              <span className="flex-1 text-sm text-paper">{editingVoiceId ? 'Nouveau vocal…' : 'Enregistrement…'} {recorder.elapsedSec}s</span>
+              <button type="button" onClick={editingVoiceId ? cancelEditVoice : recorder.cancel} aria-label="Annuler le vocal" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={17} /></button>
             </div>
           ) : (
             <>
@@ -488,25 +517,25 @@ async function openHistory(messageId: string) {
         </div>
       )}
       {historyFor && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true">
-    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
-      <div className="flex items-center justify-between border-b border-line px-4 py-3">
-        <p className="font-display text-sm font-semibold text-paper">Historique des modifications</p>
-        <button type="button" onClick={() => setHistoryFor(null)} aria-label="Fermer l’historique" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
-      </div>
-      <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">
-        {historyLoading && <p className="text-sm text-paperDim">Chargement…</p>}
-        {!historyLoading && historyEntries.length === 0 && <p className="text-sm text-paperDim">Aucune version antérieure.</p>}
-        {!historyLoading && historyEntries.map((entry, i) => (
-          <div key={i} className="rounded-xl border border-line bg-panel2 px-3 py-2">
-            <p className="whitespace-pre-wrap break-words text-sm text-paper">{entry.previousContent}</p>
-            <p className="mt-1 text-[10px] text-paperDim">{timeLabel(entry.editedAt)}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <p className="font-display text-sm font-semibold text-paper">Historique des modifications</p>
+              <button type="button" onClick={() => setHistoryFor(null)} aria-label="Fermer l’historique" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-4 space-y-3">
+              {historyLoading && <p className="text-sm text-paperDim">Chargement…</p>}
+              {!historyLoading && historyEntries.length === 0 && <p className="text-sm text-paperDim">Aucune version antérieure.</p>}
+              {!historyLoading && historyEntries.map((entry, i) => (
+                <div key={i} className="rounded-xl border border-line bg-panel2 px-3 py-2">
+                  <p className="whitespace-pre-wrap break-words text-sm text-paper">{entry.previousContent}</p>
+                  <p className="mt-1 text-[10px] text-paperDim">{timeLabel(entry.editedAt)}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
+        </div>
+      )}
       {lightbox && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" onClick={() => setLightbox(null)}>
           <button type="button" onClick={() => setLightbox(null)} aria-label="Fermer" className="absolute right-4 top-4 rounded-full bg-black/50 p-3 text-white"><X size={22} /></button>
@@ -515,4 +544,4 @@ async function openHistory(messageId: string) {
       )}
     </div>
   )
-                }
+          }
