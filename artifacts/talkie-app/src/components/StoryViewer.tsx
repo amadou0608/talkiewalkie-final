@@ -17,6 +17,7 @@ const STORY_DURATION_MS = 5000
 // haut, tap gauche/droite pour naviguer, defile automatiquement (Phase 21).
 // Phase 22 : compteur "vu par" cliquable sur ses propres stories, met en
 // pause le defilement automatique pendant que la liste est ouverte.
+// Phase 23 : appui long sur la story met en pause le defilement.
 export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryViewerProps) {
   const { user } = useAuth()
   const [groupIndex, setGroupIndex] = useState(startGroupIndex)
@@ -25,6 +26,7 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
   const [viewerCount, setViewerCount] = useState(0)
   const [viewersList, setViewersList] = useState<Viewer[] | null>(null)
   const [showViewers, setShowViewers] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
   const frameRef = useRef<number | undefined>(undefined)
   const startRef = useRef<number>(0)
 
@@ -69,27 +71,13 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
         .then((viewers) => setViewerCount(viewers.length))
         .catch(() => {})
     }
-
-    const tick = (now: number) => {
-      const elapsed = now - startRef.current
-      const pct = Math.min(1, elapsed / STORY_DURATION_MS)
-      setProgress(pct)
-      if (pct >= 1) {
-        goNext()
-      } else {
-        frameRef.current = requestAnimationFrame(tick)
-      }
-    }
-    frameRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (frameRef.current) cancelAnimationFrame(frameRef.current)
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupIndex, storyIndex])
 
-  // Met en pause le defilement automatique tant que la liste des vus est ouverte.
+  // Anime la progression sauf si en pause (appui long ou liste des vus ouverte).
   useEffect(() => {
-    if (showViewers) {
+    const paused = showViewers || isPaused
+    if (paused) {
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
       return
     }
@@ -110,7 +98,7 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showViewers])
+  }, [showViewers, isPaused, groupIndex, storyIndex])
 
   const handleDelete = async () => {
     if (!story) return
@@ -168,7 +156,13 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
         </div>
       </div>
 
-      <div className="relative flex-1">
+      <div
+        className="relative flex-1"
+        onPointerDown={() => setIsPaused(true)}
+        onPointerUp={() => setIsPaused(false)}
+        onPointerLeave={() => setIsPaused(false)}
+        onPointerCancel={() => setIsPaused(false)}
+      >
         <img src={story.imageUrl.startsWith('http') ? story.imageUrl : `${(import.meta.env.VITE_API_URL || '/api').replace(/\/api\/?$/, '')}${story.imageUrl}`} alt="" className="h-full w-full object-contain" />
         <button aria-label="Precedent" onClick={goPrev} className="absolute inset-y-0 left-0 w-1/3" />
         <button aria-label="Suivant" onClick={goNext} className="absolute inset-y-0 right-0 w-1/3" />
