@@ -367,10 +367,11 @@ export default function Talk() {
                     {message.type === 'voice' ? (
                       <div className="min-w-[210px]">
                         <audio
+                          key={`${message.id}-${message.editedAt ?? message.createdAt}`}
                           controls
                           preload="metadata"
                           crossOrigin="use-credentials"
-                          src={chatVoiceUrl(message.id)}
+                          src={`${chatVoiceUrl(message.id)}?v=${encodeURIComponent(message.editedAt ?? message.createdAt)}`}
                           className="w-full max-w-[240px]"
                           onPlay={() => {
                             if (!mine && message.status !== 'read') {
@@ -380,7 +381,7 @@ export default function Talk() {
                           aria-label={`Message vocal de ${message.sender.displayName}`}
                         />
                         <div className={`mt-1 flex items-center justify-between text-[10px] ${mine ? 'text-ink/70' : 'text-paperDim'}`}>
-                          <span>{message.durationSec ?? 0}s</span>
+                          <span>{message.durationSec ?? 0}s{mine && !message.editedAt && editRemainingMinutes(message.createdAt) > 0 && ` · modifiable ${editRemainingMinutes(message.createdAt)} min`}</span>
                           {mine && !message.deletedAt && editRemainingMinutes(message.createdAt) > 0 && (
                             <button type="button" title={`Modifiable encore ${editRemainingMinutes(message.createdAt)} min`} onClick={() => startEditVoice(message.id)} className="ml-1 opacity-70 hover:opacity-100"><Pencil size={11} /></button>
                           )}
