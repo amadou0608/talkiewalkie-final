@@ -6,7 +6,7 @@ import { hasActiveSocket, notifyUser } from '../../realtime/socket'
 import { sendPushToUser } from '../push/push.service'
 import { absolutePathFor, deleteVoiceMessageFile, saveVoiceMessageFile } from '../voice-messages/storage'
 import { sendVoiceMessageSchema, MAX_VOICE_MESSAGE_BYTES } from '../voice-messages/voice-messages.schemas'
-import { createChatVoiceMessage, getChatMessageFile } from './messages.service'
+import { createChatVoiceMessage, getChatMessageFile, editVoiceMessage } from './messages.service'
 
 export const createVoice = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw new AppError('INVALID_AUDIO_FILE', 'Aucun fichier audio reçu.', 400)
@@ -61,4 +61,23 @@ export const voiceFile = asyncHandler(async (req: Request, res: Response) => {
   res.setHeader('Content-Range', `bytes ${start}-${end}/${stat.size}`)
   res.setHeader('Content-Length', end - start + 1)
   fs.createReadStream(absolutePath, { start, end }).pipe(res)
+})
+export const editVoice = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) throw new AppError('INVALID_AUDIO_FILE', 'Aucun fichier audio reçu.', 400)
+  if (req.file.size > MAX_VOICE_MESSAGE_BYTES) throw new AppError('FILE_TOO_LARGE', 'Message vocal trop volumineux.', 413)
+  if (!req.file.mimetype.startsWith('audio/')) throw new AppError('INVALID_AUDIO_FILE', 'Format audio non supporté.', 400)
+
+  const parsed = sendVoiceMessageSchema.pick({ durationSec: true }).safeParse(req.body)
+  if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Données invalides.')
+
+  const { relativePath } = saveVoiceMessageFile(req.file.buffer, req.file.mimetype)
+  try {
+    const { message, previousFileUrl } = await editVoiceMessage(req.userId!, req.params.messageId, relativePath, req.file.mimetype, parsed.data.durationSec)
+    notifyUser(message.receiverId, 'message:updated', message)
+    if (previousFileUrl) deleteVoiceMessageFile(previousFileUrl)
+    res.status(200).json({ message })
+  } catch (err) {
+    deleteVoiceMessageFile(relativePath)
+    throw err
+  }
 })
