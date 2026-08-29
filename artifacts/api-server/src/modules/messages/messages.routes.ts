@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { requireAuth } from '../../middleware/requireAuth'
-import { createText, delivered, list, read, readConversation, summaries, edit, remove } from './messages.controller'
+import { createText, delivered, list, read, readConversation, summaries, edit, editHistory, remove } from './messages.controller'
 import { createVoice, voiceFile } from './messages.voice'
 import { createImage, imageFile, MAX_IMAGE_BYTES } from './messages.media'
 import { createVideo, videoFile, MAX_VIDEO_BYTES } from './messages.video'
@@ -16,6 +16,7 @@ messagesRouter.post('/:messageId/delivered', delivered)
 messagesRouter.post('/:messageId/read', read)
 messagesRouter.post('/read-conversation', readConversation)
 messagesRouter.patch('/:messageId', edit)
+messagesRouter.get('/:messageId/history', editHistory)
 messagesRouter.delete('/:messageId', remove)
 
 const voiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_VOICE_MESSAGE_BYTES } })
