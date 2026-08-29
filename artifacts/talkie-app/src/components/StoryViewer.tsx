@@ -13,11 +13,14 @@ interface StoryViewerProps {
 
 const STORY_DURATION_MS = 5000
 
+function mediaUrl(url: string) {
+  return url.startsWith('http') ? url : `${(import.meta.env.VITE_API_URL || '/api').replace(/\/api\/?$/, '')}${url}`
+}
+
 // Viewer plein ecran facon WhatsApp/Instagram : barres de progression en
 // haut, tap gauche/droite pour naviguer, defile automatiquement (Phase 21).
-// Phase 22 : compteur "vu par" cliquable sur ses propres stories, met en
-// pause le defilement automatique pendant que la liste est ouverte.
-// Phase 23 : appui long sur la story met en pause le defilement.
+// Phase 22 : compteur "vu par", pause pendant la liste des vus.
+// Phase 23 : appui long pour pause, statuts texte, video (duree reelle), legende.
 export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryViewerProps) {
   const { user } = useAuth()
   const [groupIndex, setGroupIndex] = useState(startGroupIndex)
@@ -29,10 +32,12 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
   const [isPaused, setIsPaused] = useState(false)
   const frameRef = useRef<number | undefined>(undefined)
   const startRef = useRef<number>(0)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
 
   const group = groups[groupIndex]
   const story = group?.stories[storyIndex]
   const isMine = story?.userId === user?.id
+  const isVideo = story?.type === 'video'
 
   const goNext = () => {
     if (!group) return
@@ -74,8 +79,10 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupIndex, storyIndex])
 
-  // Anime la progression sauf si en pause (appui long ou liste des vus ouverte).
+  // Progression basee sur un minuteur fixe (image/texte). Les videos gerent
+  // leur propre progression via onTimeUpdate/onEnded ci-dessous.
   useEffect(() => {
+    if (isVideo) return
     const paused = showViewers || isPaused
     if (paused) {
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
@@ -98,7 +105,17 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showViewers, isPaused, groupIndex, storyIndex])
+  }, [showViewers, isPaused, groupIndex, storyIndex, isVideo])
+
+  // Pause/relance la lecture video quand isPaused ou showViewers change.
+  useEffect(() => {
+    if (!isVideo || !videoRef.current) return
+    if (isPaused || showViewers) {
+      videoRef.current.pause()
+    } else {
+      videoRef.current.play().catch(() => {})
+    }
+  }, [isPaused, showViewers, isVideo])
 
   const handleDelete = async () => {
     if (!story) return
@@ -163,7 +180,33 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
         onPointerLeave={() => setIsPaused(false)}
         onPointerCancel={() => setIsPaused(false)}
       >
-        <img src={story.imageUrl.startsWith('http') ? story.imageUrl : `${(import.meta.env.VITE_API_URL || '/api').replace(/\/api\/?$/, '')}${story.imageUrl}`} alt="" className="h-full w-full object-contain" />
+        {story.type === 'text' ? (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-emerald-700 to-neutral-900 p-8">
+            <p className="whitespace-pre-wrap break-words text-center text-2xl font-semibold text-white">{story.textContent}</p>
+          </div>
+        ) : story.type === 'video' ? (
+          <video
+            ref={videoRef}
+            src={story.imageUrl ? mediaUrl(story.imageUrl) : undefined}
+            autoPlay
+            playsInline
+            className="h-full w-full object-contain"
+            onTimeUpdate={(e) => {
+              const v = e.currentTarget
+              if (v.duration > 0) setProgress(v.currentTime / v.duration)
+            }}
+            onEnded={goNext}
+          />
+        ) : (
+          <img src={story.imageUrl ? mediaUrl(story.imageUrl) : undefined} alt="" className="h-full w-full object-contain" />
+        )}
+
+        {story.type !== 'text' && story.textContent && (
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-6 pt-10">
+            <p className="whitespace-pre-wrap break-words text-center text-sm text-white">{story.textContent}</p>
+          </div>
+        )}
+
         <button aria-label="Precedent" onClick={goPrev} className="absolute inset-y-0 left-0 w-1/3" />
         <button aria-label="Suivant" onClick={goNext} className="absolute inset-y-0 right-0 w-1/3" />
       </div>
