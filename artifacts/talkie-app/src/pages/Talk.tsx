@@ -340,8 +340,8 @@ export default function Talk() {
     return <div className="flex min-h-screen items-center justify-center px-6 text-center text-sm text-paperDim">Contact introuvable.</div>
 }
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="safe-top flex items-center gap-3 border-b border-line px-4 pb-3 pt-4">
+    <div className="flex h-dvh flex-col overflow-hidden">
+      <header className="safe-top flex-shrink-0 flex items-center gap-3 border-b border-line px-4 pb-3 pt-4">
         <button onClick={() => navigate('/')} aria-label="Retour" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><ArrowLeft size={20} /></button>
         <Avatar name={otherUser.displayName} color={otherUser.avatarColor} size={38} />
         <div className="min-w-0 flex-1">
@@ -354,7 +354,7 @@ export default function Talk() {
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; void handleImageFile(file); e.currentTarget.value = '' }} />
       <input ref={videoGalleryInputRef} type="file" accept="video/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; void handleVideoFile(file); e.currentTarget.value = '' }} />
       <input ref={videoCameraInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; void handleVideoFile(file); e.currentTarget.value = '' }} />
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col overflow-y-auto px-4 py-5">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col overflow-y-auto px-4 py-5 min-h-0">
         {loading && <p className="m-auto text-sm text-paperDim">Chargement de la conversation...</p>}
         {!loading && messages.length === 0 && <p className="m-auto max-w-xs text-center text-sm text-paperDim">Aucun message. Envoyez le premier message à {otherUser.displayName}.</p>}
         {!loading && messages.length > 0 && (
@@ -434,7 +434,7 @@ export default function Talk() {
         {typing && <p className="mt-3 text-xs italic text-paperDim">{otherUser.displayName} est en train d’écrire…</p>}
         {error && <p className="mt-3 text-center text-xs text-alert">{error}</p>}
       </main>
-      <form onSubmit={handleSubmit} className="safe-bottom border-t border-line bg-ink/95 px-4 py-3 backdrop-blur">
+      <form onSubmit={handleSubmit} className="safe-bottom flex-shrink-0 border-t border-line bg-ink/95 px-4 py-3 backdrop-blur">
         {pendingSend && (
           <div className="mx-auto mb-2 flex max-w-md items-center justify-between rounded-xl border border-line bg-panel2 px-4 py-2">
             <span className="text-sm text-paper">Envoi dans quelques secondes…</span>
