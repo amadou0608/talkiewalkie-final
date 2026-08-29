@@ -1,11 +1,13 @@
 import { pool } from '../../db/pool'
 import { AppError } from '../../utils/AppError'
 import { avatarColorFor } from '../../utils/presentation'
-import type { StoryRow, StoryGroup, StoryVisibilityMode, StoryViewer } from './stories.types'
+import type { StoryRow, StoryGroup, StoryVisibilityMode, StoryViewer, StoryType } from './stories.types'
 
 export async function createStory(
   userId: string,
-  imageUrl: string,
+  type: StoryType,
+  imageUrl: string | null,
+  textContent: string | null,
   visibilityMode: StoryVisibilityMode,
   targetUserIds: string[],
 ): Promise<StoryRow> {
@@ -14,10 +16,10 @@ export async function createStory(
     await client.query('BEGIN')
 
     const result = await client.query<StoryRow>(
-      `INSERT INTO stories (user_id, image_url, expires_at, visibility_mode)
-       VALUES ($1, $2, now() + INTERVAL '24 hours', $3)
+      `INSERT INTO stories (user_id, image_url, type, text_content, expires_at, visibility_mode)
+       VALUES ($1, $2, $3, $4, now() + INTERVAL '24 hours', $5)
        RETURNING *`,
-      [userId, imageUrl, visibilityMode],
+      [userId, imageUrl, type, textContent, visibilityMode],
     )
     const story = result.rows[0]
 
@@ -65,11 +67,11 @@ export async function listContactsStories(userId: string): Promise<StoryGroup[]>
        AND (
          s.visibility_mode = 'all'
          OR (s.visibility_mode = 'except' AND NOT EXISTS (
-              SELECT 1 FROM story_visibility_list svl WHERE svl.story_id = s.id AND svl.user_id = $1
-            ))
+               SELECT 1 FROM story_visibility_list svl WHERE svl.story_id = s.id AND svl.user_id = $1
+             ))
          OR (s.visibility_mode = 'only' AND EXISTS (
-              SELECT 1 FROM story_visibility_list svl WHERE svl.story_id = s.id AND svl.user_id = $1
-            ))
+               SELECT 1 FROM story_visibility_list svl WHERE svl.story_id = s.id AND svl.user_id = $1
+             ))
        )
      ORDER BY s.created_at ASC`,
     [userId],
@@ -103,6 +105,8 @@ export async function listContactsStories(userId: string): Promise<StoryGroup[]>
       id: row.id,
       userId: row.user_id,
       imageUrl: row.image_url,
+      type: row.type,
+      textContent: row.text_content,
       createdAt: row.created_at.toISOString(),
       expiresAt: row.expires_at.toISOString(),
       viewed,
@@ -162,4 +166,4 @@ export async function deleteStory(userId: string, storyId: string): Promise<void
   if (result.rowCount === 0) {
     throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
   }
-                                        }
+       }
