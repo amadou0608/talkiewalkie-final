@@ -136,3 +136,23 @@ export async function apiGetEditHistory(messageId: string): Promise<MessageEditH
 export async function apiDeleteMessage(messageId: string): Promise<void> {
   await request(`/messages/${messageId}`, { method: 'DELETE' })
 }
+export async function apiEditVoiceMessage(messageId: string, audio: Blob, durationSec: number): Promise<ChatMessage> {
+  const form = new FormData()
+  form.append('durationSec', String(Math.max(1, Math.round(durationSec))))
+  form.append('audio', audio, `vocal.${audio.type.includes('ogg') ? 'ogg' : 'webm'}`)
+
+  let response: Response
+  try {
+    response = await fetch(`${API_URL}/messages/${messageId}/voice`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'talkie-web' },
+      body: form,
+    })
+  } catch {
+    throw new AuthApiError({ code: 'NETWORK_ERROR', message: 'Serveur injoignable. Vérifiez votre connexion.' })
+  }
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new AuthApiError({ code: body?.code ?? 'UNKNOWN', message: body?.message ?? 'Le vocal n\'a pas pu être modifié.' })
+  return body.message as ChatMessage
+}
