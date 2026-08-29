@@ -1,18 +1,17 @@
-// Service stories — Phase 21.
-//
-// Meme pattern que authApi.ts : request<T> generique, credentials 'include'
-// pour le cookie de session, header X-Requested-With requis par le
-// middleware CSRF sur toute requete qui modifie un etat.
+// Service stories — Phase 21, etendu Phase 23 (texte, video, legende).
 import { AuthApiError } from './authApi'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 export type StoryVisibilityMode = 'all' | 'except' | 'only'
+export type StoryType = 'image' | 'video' | 'text'
 
 export interface Story {
   id: string
   userId: string
-  imageUrl: string
+  imageUrl: string | null
+  type: StoryType
+  textContent: string | null
   createdAt: string
   expiresAt: string
   viewed: boolean
@@ -68,12 +67,16 @@ async function request<T>(path: string, options: RequestInit): Promise<T> {
 }
 
 export async function apiUploadStory(
-  file: File,
+  type: StoryType,
+  file: File | null,
+  textContent: string,
   visibilityMode: StoryVisibilityMode = 'all',
   targetUserIds: string[] = [],
 ): Promise<Story> {
   const formData = new FormData()
-  formData.append('image', file)
+  formData.append('type', type)
+  if (file) formData.append('media', file)
+  if (textContent) formData.append('textContent', textContent)
   formData.append('visibilityMode', visibilityMode)
   if (visibilityMode !== 'all') {
     formData.append('targetUserIds', JSON.stringify(targetUserIds))
