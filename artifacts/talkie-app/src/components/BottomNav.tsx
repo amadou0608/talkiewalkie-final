@@ -1,10 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { Radio, Users, Voicemail, User } from 'lucide-react'
+import { Radio, Users, CircleDot, User } from 'lucide-react'
 
 const ITEMS = [
   { to: '/', label: 'Accueil', icon: Radio, end: true },
   { to: '/contacts', label: 'Contacts', icon: Users, end: false },
-  { to: '/messages', label: 'Messages', icon: Voicemail, end: false },
+  { to: '/status', label: 'Statut', icon: CircleDot, end: false },
   { to: '/profile', label: 'Profil', icon: User, end: false },
 ]
 
