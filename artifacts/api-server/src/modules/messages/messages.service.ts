@@ -120,7 +120,32 @@ export async function editTextMessage(userId: string, messageId: string, content
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [messageId])
   return mapMessage(result.rows[0])
 }
+export async function editVoiceMessage(userId: string, messageId: string, fileUrl: string, mimeType: string, durationSec: number) {
+  const existing = await pool.query<{ receiver_id: string; type: string; file_url: string | null; created_at: Date; deleted_at: Date | null }>(
+    `SELECT receiver_id, type, file_url, created_at, deleted_at FROM messages WHERE id = $1 AND sender_id = $2 LIMIT 1`, [messageId, userId])
+  const row = existing.rows[0]
+  if (!row) throw new AppError('NOT_FOUND', 'Message introuvable.', 404)
+  if (row.type !== 'voice') throw new AppError('VALIDATION_ERROR', 'Seuls les messages vocaux peuvent être modifiés ainsi.')
+  if (row.deleted_at) throw new AppError('VALIDATION_ERROR', 'Ce message a été supprimé.')
 
+  const ageMinutes = (Date.now() - row.created_at.getTime()) / 60000
+  if (ageMinutes > EDIT_WINDOW_MINUTES) {
+    throw new AppError('VALIDATION_ERROR', 'Le délai de modification (20 minutes) est dépassé.', 403)
+  }
+
+  const previousFileUrl = row.file_url
+
+  await pool.query(
+    `INSERT INTO message_edit_history (message_id, previous_content) VALUES ($1, $2)`,
+    [messageId, '[vocal précédent]'])
+
+  await pool.query(
+    `UPDATE messages SET file_url = $1, mime_type = $2, duration_sec = $3, edited_at = now() WHERE id = $4 AND sender_id = $5`,
+    [fileUrl, mimeType, durationSec, messageId, userId])
+
+  const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [messageId])
+  return { message: mapMessage(result.rows[0]), previousFileUrl }
+                                         }
 export async function getEditHistory(userId: string, messageId: string) {
   const owner = await pool.query<{ sender_id: string; receiver_id: string }>(
     `SELECT sender_id, receiver_id FROM messages WHERE id = $1 LIMIT 1`, [messageId])
