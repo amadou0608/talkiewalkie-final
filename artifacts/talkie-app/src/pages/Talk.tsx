@@ -15,6 +15,13 @@ function timeLabel(iso: string) {
   return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
+const EDIT_WINDOW_MS = 20 * 60 * 1000
+
+function editRemainingMinutes(createdAt: string) {
+  const remaining = EDIT_WINDOW_MS - (Date.now() - new Date(createdAt).getTime())
+  return remaining > 0 ? Math.ceil(remaining / 60000) : 0
+}
+
 export default function Talk() {
   const { userId } = useParams()
   const navigate = useNavigate()
@@ -41,6 +48,12 @@ export default function Talk() {
   const videoGalleryInputRef = useRef<HTMLInputElement | null>(null)
   const videoCameraInputRef = useRef<HTMLInputElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    const interval = setInterval(() => forceTick((n) => n + 1), 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   const otherUser = contact?.user
   const title = otherUser?.displayName ?? 'Conversation'
@@ -328,11 +341,16 @@ export default function Talk() {
                       <>
                         <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
                         {message.editedAt && <span className="ml-1 text-[9px] opacity-60">modifié</span>}
+                        {mine && !message.editedAt && editRemainingMinutes(message.createdAt) > 0 && (
+                          <span className="ml-1 text-[9px] opacity-40">· modifiable {editRemainingMinutes(message.createdAt)} min</span>
+                        )}
                       </>
                     )}
                     <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? 'text-ink/70' : 'text-paperDim'}`}>
                       <span>{timeLabel(message.createdAt)}</span>
-                      {mine && !message.deletedAt && <>{message.type === 'text' && <button type="button" title="Modifier" onClick={() => { setEditingId(message.id); setEditText(message.content ?? '') }} className="ml-1 opacity-70 hover:opacity-100"><Pencil size={11} /></button>}<button type="button" title="Supprimer pour tout le monde" onClick={() => void removeMessage(message.id)} className="opacity-70 hover:opacity-100"><Trash2 size={11} /></button></>}
+                      {mine && !message.deletedAt && <>{message.type === 'text' && editRemainingMinutes(message.createdAt) > 0 && (
+                        <button type="button" title={`Modifiable encore ${editRemainingMinutes(message.createdAt)} min`} onClick={() => { setEditingId(message.id); setEditText(message.content ?? '') }} className="ml-1 opacity-70 hover:opacity-100"><Pencil size={11} /></button>
+                      )}<button type="button" title="Supprimer pour tout le monde" onClick={() => void removeMessage(message.id)} className="opacity-70 hover:opacity-100"><Trash2 size={11} /></button></>}
                       {mine && (
                         <span
                           title={message.status === 'sent' ? 'Envoyé' : message.status === 'delivered' ? 'Reçu' : 'Lu'}
@@ -367,76 +385,4 @@ export default function Talk() {
             <div className="flex shrink-0 gap-1">
               <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => galleryInputRef.current?.click()} aria-label="Choisir une photo" className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40"><ImageIcon size={17} /></button>
               <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => cameraInputRef.current?.click()} aria-label="Prendre une photo" className="hidden h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40 sm:flex"><Camera size={17} /></button>
-              <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => videoGalleryInputRef.current?.click()} aria-label="Choisir une vidéo" className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40"><Video size={17} /></button>
-              <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => videoCameraInputRef.current?.click()} aria-label="Enregistrer une vidéo" className="hidden h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40 sm:flex"><Camera size={17} /></button>
-            </div>
-            <textarea
-              value={text}
-              onChange={(e) => handleTextChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }}
-              rows={1}
-              maxLength={4000}
-              placeholder="Écrire un message..."
-              aria-label="Message"
-              disabled={voiceSending}
-              className="max-h-28 min-h-11 flex-1 resize-none rounded-2xl border border-line bg-panel px-4 py-3 text-sm text-paper outline-none placeholder:text-paperDim focus:border-transmit"
-            />
-            </>
-          )}
-          {recorder.state === 'recording' ? (
-            <button type="button" disabled={voiceSending} onClick={toggleRecording} aria-label="Arrêter et envoyer le vocal" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-alert text-ink disabled:opacity-40">
-              <Square size={16} fill="currentColor" />
-            </button>
-          ) : canSend ? (
-            <button disabled={!canSend} aria-label="Envoyer" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-transmit text-ink disabled:cursor-not-allowed disabled:opacity-40">
-              <Send size={17} />
-            </button>
-          ) : (
-            <button type="button" disabled={voiceSending} onClick={toggleRecording} aria-label="Enregistrer un message vocal" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40">
-              <Mic size={17} />
-            </button>
-          )}
-        </div>
-      </form>
-      {imagePreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <p className="font-display text-sm font-semibold text-paper">Aperçu de la photo</p>
-              <button type="button" onClick={cancelImagePreview} aria-label="Fermer l’aperçu" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
-            </div>
-            <div className="flex max-h-[65vh] justify-center bg-black p-3"><img src={imagePreview.url} alt="Aperçu de la photo à envoyer" className="max-h-[60vh] max-w-full rounded-xl object-contain" /></div>
-            <div className="flex gap-2 p-3">
-              <button type="button" onClick={cancelImagePreview} disabled={imageSending} className="flex-1 rounded-xl border border-line px-4 py-3 text-sm text-paper disabled:opacity-40">Annuler</button>
-              <button type="button" onClick={() => void sendImagePreview()} disabled={imageSending} className="flex-1 rounded-xl bg-transmit px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">{imageSending ? 'Envoi…' : 'Envoyer'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {videoPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <p className="font-display text-sm font-semibold text-paper">Aperçu de la vidéo</p>
-              <button type="button" onClick={cancelVideoPreview} aria-label="Fermer l’aperçu vidéo" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
-            </div>
-            <div className="flex max-h-[65vh] justify-center bg-black p-3"><video src={videoPreview.url} controls playsInline preload="metadata" className="max-h-[60vh] max-w-full rounded-xl" /></div>
-            <div className="flex items-center justify-between gap-2 border-t border-line p-3">
-              <span className="text-xs text-paperDim">Durée : {Math.ceil(videoPreview.durationSec)}s · maximum 5 min</span>
-              <div className="flex gap-2">
-                <button type="button" onClick={cancelVideoPreview} disabled={videoSending} className="rounded-xl border border-line px-4 py-3 text-sm text-paper disabled:opacity-40">Annuler</button>
-                <button type="button" onClick={() => void sendVideoPreview()} disabled={videoSending} className="rounded-xl bg-transmit px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">{videoSending ? 'Envoi…' : 'Envoyer'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {lightbox && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true" onClick={() => setLightbox(null)}>
-          <button type="button" onClick={() => setLightbox(null)} aria-label="Fermer" className="absolute right-4 top-4 rounded-full bg-black/50 p-3 text-white"><X size={22} /></button>
-          <img src={lightbox} alt="Photo en plein écran" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
-    </div>
-  )
-}
+    
