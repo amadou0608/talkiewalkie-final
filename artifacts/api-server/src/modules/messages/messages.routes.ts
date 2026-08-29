@@ -20,6 +20,7 @@ messagesRouter.get('/:messageId/history', editHistory)
 messagesRouter.delete('/:messageId', remove)
 
 const voiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_VOICE_MESSAGE_BYTES } })
+messagesRouter.post('/voice', voiceUpload.single('audio'), createVoice)
 messagesRouter.patch('/:messageId/voice', voiceUpload.single('audio'), editVoice)
 messagesRouter.get('/:messageId/voice', voiceFile)
 
