@@ -370,9 +370,7 @@ export default function Talk() {
         )}
         {typing && <p className="mt-3 text-xs italic text-paperDim">{otherUser.displayName} est en train d’écrire…</p>}
         {error && <p className="mt-3 text-center text-xs text-alert">{error}</p>}
-      </main>
-
-      <form onSubmit={handleSubmit} className="safe-bottom border-t border-line bg-ink/95 px-4 py-3 backdrop-blur">
+      </main><form onSubmit={handleSubmit} className="safe-bottom border-t border-line bg-ink/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-md items-end gap-2">
           {recorder.state === 'recording' ? (
             <div className="flex min-h-11 flex-1 items-center gap-3 rounded-2xl border border-alert/40 bg-panel px-4">
@@ -385,7 +383,10 @@ export default function Talk() {
             <div className="flex shrink-0 gap-1">
               <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => galleryInputRef.current?.click()} aria-label="Choisir une photo" className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40"><ImageIcon size={17} /></button>
               <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => cameraInputRef.current?.click()} aria-label="Prendre une photo" className="hidden h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40 sm:flex"><Camera size={17} /></button>
-  <textarea
+              <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => videoGalleryInputRef.current?.click()} aria-label="Choisir une vidéo" className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40"><Video size={17} /></button>
+              <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => videoCameraInputRef.current?.click()} aria-label="Enregistrer une vidéo" className="hidden h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40 sm:flex"><Camera size={17} /></button>
+            </div>
+            <textarea
               value={text}
               onChange={(e) => handleTextChange(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }}
@@ -454,4 +455,4 @@ export default function Talk() {
       )}
     </div>
   )
-          }
+                }
