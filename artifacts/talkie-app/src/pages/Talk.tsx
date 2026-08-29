@@ -138,24 +138,40 @@ const [historyLoading, setHistoryLoading] = useState(false)
 
   const canSend = useMemo(() => text.trim().length > 0 && !sending && !!userId, [text, sending, userId])
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault()
-    if (!canSend || !userId) return
-    const content = text.trim()
-    emitTyping(false)
-    setText('')
+  async function actuallySendMessage(content: string) {
+    if (!userId) return
     setSending(true)
     setError(null)
     try {
       const message = await apiSendTextMessage(userId, content)
       mergeMessage(message)
     } catch {
-      setText(content)
-      setError('Le message n’a pas pu être envoyé.')
+      setError('Le message n\'a pas pu être envoyé.')
     } finally {
       setSending(false)
     }
   }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (!canSend || !userId) return
+    const content = text.trim()
+    emitTyping(false)
+    setText('')
+    setError(null)
+    const timeoutId = setTimeout(() => {
+      setPendingSend(null)
+      void actuallySendMessage(content)
+    }, 5000)
+    setPendingSend({ content, timeoutId })
+  }
+
+  function cancelPendingSend() {
+    if (!pendingSend) return
+    clearTimeout(pendingSend.timeoutId)
+    setText(pendingSend.content)
+    setPendingSend(null)
+                                                                                 }
 
   function handleImageFile(file?: File) {
     if (!file || !userId || imageSending) return
