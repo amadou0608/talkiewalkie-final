@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatMessageStatus, ChatMessageUser } from '@/types'
+import type { ChatMessage, ChatMessageStatus, ChatMessageUser, MessageEditHistoryEntry } from '@/types'
 import { AuthApiError } from '@/lib/authApi'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
@@ -129,7 +129,10 @@ export async function apiEditTextMessage(messageId: string, content: string): Pr
   const { message } = await request<{ message: ChatMessage }>(`/messages/${messageId}`, { method: 'PATCH', body: JSON.stringify({ content }) })
   return message
 }
-
+export async function apiGetEditHistory(messageId: string): Promise<MessageEditHistoryEntry[]> {
+  const { history } = await request<{ history: MessageEditHistoryEntry[] }>(`/messages/${messageId}/history`)
+  return history
+}
 export async function apiDeleteMessage(messageId: string): Promise<void> {
   await request(`/messages/${messageId}`, { method: 'DELETE' })
 }
