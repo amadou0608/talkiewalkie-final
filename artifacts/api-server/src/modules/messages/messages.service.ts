@@ -3,6 +3,8 @@ import { AppError } from '../../utils/AppError'
 import { isAcceptedContact } from '../contacts/contacts.service'
 import { avatarColorFor } from '../../utils/presentation'
 
+const EDIT_WINDOW_MINUTES = 20
+
 export interface MessageUser { id: string; username: string; displayName: string; avatarColor: string; avatarUrl?: string }
 export interface MessageItem {
   id: string
@@ -98,15 +100,38 @@ export async function markConversationRead(userId: string, otherUserId: string) 
 }
 
 export async function editTextMessage(userId: string, messageId: string, content: string) {
-  const existing = await pool.query<{ receiver_id: string; type: string; deleted_at: Date | null }>(
-    `SELECT receiver_id, type, deleted_at FROM messages WHERE id = $1 AND sender_id = $2 LIMIT 1`, [messageId, userId])
+  const existing = await pool.query<{ receiver_id: string; type: string; content: string | null; created_at: Date; deleted_at: Date | null }>(
+    `SELECT receiver_id, type, content, created_at, deleted_at FROM messages WHERE id = $1 AND sender_id = $2 LIMIT 1`, [messageId, userId])
   const row = existing.rows[0]
   if (!row) throw new AppError('NOT_FOUND', 'Message introuvable.', 404)
   if (row.type !== 'text') throw new AppError('VALIDATION_ERROR', 'Seuls les messages texte peuvent être modifiés.')
   if (row.deleted_at) throw new AppError('VALIDATION_ERROR', 'Ce message a été supprimé.')
+
+  const ageMinutes = (Date.now() - row.created_at.getTime()) / 60000
+  if (ageMinutes > EDIT_WINDOW_MINUTES) {
+    throw new AppError('VALIDATION_ERROR', 'Le délai de modification (20 minutes) est dépassé.', 403)
+  }
+
+  await pool.query(
+    `INSERT INTO message_edit_history (message_id, previous_content) VALUES ($1, $2)`,
+    [messageId, row.content])
+
   await pool.query(`UPDATE messages SET content = $1, edited_at = now() WHERE id = $2 AND sender_id = $3`, [content, messageId, userId])
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [messageId])
   return mapMessage(result.rows[0])
+}
+
+export async function getEditHistory(userId: string, messageId: string) {
+  const owner = await pool.query<{ sender_id: string; receiver_id: string }>(
+    `SELECT sender_id, receiver_id FROM messages WHERE id = $1 LIMIT 1`, [messageId])
+  const row = owner.rows[0]
+  if (!row || (row.sender_id !== userId && row.receiver_id !== userId)) {
+    throw new AppError('NOT_FOUND', 'Message introuvable.', 404)
+  }
+  const result = await pool.query<{ previous_content: string | null; edited_at: Date }>(
+    `SELECT previous_content, edited_at FROM message_edit_history WHERE message_id = $1 ORDER BY edited_at ASC`,
+    [messageId])
+  return result.rows.map((r) => ({ previousContent: r.previous_content, editedAt: r.edited_at.toISOString() }))
 }
 
 export async function deleteMessage(userId: string, messageId: string) {
@@ -151,7 +176,6 @@ export async function markDelivered(userId: string, messageId: string) {
   const updated = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1 AND m.receiver_id = $2 LIMIT 1`, [messageId, userId])
   return mapMessage(updated.rows[0])
 }
-
 
 export async function createChatVoiceMessage(
   senderId: string,
