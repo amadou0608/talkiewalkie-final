@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import { apiListContacts } from '@/lib/contactsApi'
 import type { Contact } from '@/types'
-import type { StoryVisibilityMode } from '@/lib/storiesApi'
+import type { StoryVisibilityMode, StoryType } from '@/lib/storiesApi'
 
 interface StoryVisibilityPickerProps {
-  onConfirm: (mode: StoryVisibilityMode, targetUserIds: string[]) => void
+  storyType: StoryType
+  onConfirm: (mode: StoryVisibilityMode, targetUserIds: string[], content: string) => void
   onCancel: () => void
 }
 
-export default function StoryVisibilityPicker({ onConfirm, onCancel }: StoryVisibilityPickerProps) {
+export default function StoryVisibilityPicker({ storyType, onConfirm, onCancel }: StoryVisibilityPickerProps) {
   const [mode, setMode] = useState<StoryVisibilityMode>('all')
   const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [content, setContent] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -50,16 +52,40 @@ export default function StoryVisibilityPicker({ onConfirm, onCancel }: StoryVisi
   }
 
   function handleConfirm() {
-    onConfirm(mode, Array.from(selectedIds))
+    onConfirm(mode, Array.from(selectedIds), content.trim())
   }
 
   const needsContactPicker = mode === 'except' || mode === 'only'
-  const confirmDisabled = needsContactPicker && selectedIds.size === 0
+  const textRequired = storyType === 'text' && content.trim().length === 0
+  const confirmDisabled = textRequired || (needsContactPicker && selectedIds.size === 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center">
       <div className="w-full max-w-md rounded-t-2xl bg-neutral-900 p-4 sm:rounded-2xl">
-        <h2 className="mb-4 text-lg font-semibold text-white">Qui peut voir cette story ?</h2>
+        <h2 className="mb-4 text-lg font-semibold text-white">
+          {storyType === 'text' ? 'Ecrire un statut' : 'Qui peut voir cette story ?'}
+        </h2>
+
+        {storyType === 'text' && (
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            maxLength={280}
+            rows={4}
+            placeholder="Ecrivez votre statut..."
+            className="mb-4 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-white outline-none focus:border-emerald-500"
+          />
+        )}
+        {storyType !== 'text' && (
+          <input
+            type="text"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            maxLength={280}
+            placeholder="Ajouter une legende (optionnel)"
+            className="mb-4 w-full rounded-lg border border-neutral-700 bg-neutral-800 px-3 py-2 text-white outline-none focus:border-emerald-500"
+          />
+        )}
 
         <div className="mb-4 space-y-2">
           <label className="flex items-center gap-3 rounded-lg p-2 hover:bg-neutral-800">
@@ -148,4 +174,4 @@ export default function StoryVisibilityPicker({ onConfirm, onCancel }: StoryVisi
       </div>
     </div>
   )
-}
+    }
