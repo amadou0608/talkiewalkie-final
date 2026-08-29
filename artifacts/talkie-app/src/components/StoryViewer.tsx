@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Trash2, Eye } from 'lucide-react'
+import { X, Trash2, Eye, Send } from 'lucide-react'
 import Avatar from '@/components/Avatar'
 import { resolveAvatarUrl } from '@/lib/authApi'
 import { useAuth } from '@/context/AuthContext'
 import { apiViewStory, apiDeleteStory, apiStoryViewers, type StoryGroup, type StoryViewer as Viewer } from '@/lib/storiesApi'
+import { apiSendTextMessage } from '@/lib/messagesApi'
 
 interface StoryViewerProps {
   groups: StoryGroup[]
@@ -20,7 +21,8 @@ function mediaUrl(url: string) {
 // Viewer plein ecran facon WhatsApp/Instagram : barres de progression en
 // haut, tap gauche/droite pour naviguer, defile automatiquement (Phase 21).
 // Phase 22 : compteur "vu par", pause pendant la liste des vus.
-// Phase 23 : appui long pour pause, statuts texte, video (duree reelle), legende.
+// Phase 23 : appui long pour pause, statuts texte, video (duree reelle),
+// legende, reponse directe qui envoie un message a l'auteur du statut.
 export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryViewerProps) {
   const { user } = useAuth()
   const [groupIndex, setGroupIndex] = useState(startGroupIndex)
@@ -30,6 +32,8 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
   const [viewersList, setViewersList] = useState<Viewer[] | null>(null)
   const [showViewers, setShowViewers] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
   const frameRef = useRef<number | undefined>(undefined)
   const startRef = useRef<number>(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -38,6 +42,7 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
   const story = group?.stories[storyIndex]
   const isMine = story?.userId === user?.id
   const isVideo = story?.type === 'video'
+  const replying = replyText.trim().length > 0
 
   const goNext = () => {
     if (!group) return
@@ -69,6 +74,7 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
     setViewersList(null)
     setViewerCount(0)
     setProgress(0)
+    setReplyText('')
     startRef.current = performance.now()
 
     if (isMine) {
@@ -80,10 +86,11 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
   }, [groupIndex, storyIndex])
 
   // Progression basee sur un minuteur fixe (image/texte). Les videos gerent
-  // leur propre progression via onTimeUpdate/onEnded ci-dessous.
+  // leur propre progression via onTimeUpdate/onEnded ci-dessous. En train de
+  // repondre, on met en pause comme pour un appui long.
   useEffect(() => {
     if (isVideo) return
-    const paused = showViewers || isPaused
+    const paused = showViewers || isPaused || replying
     if (paused) {
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
       return
@@ -105,17 +112,17 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showViewers, isPaused, groupIndex, storyIndex, isVideo])
+  }, [showViewers, isPaused, replying, groupIndex, storyIndex, isVideo])
 
-  // Pause/relance la lecture video quand isPaused ou showViewers change.
+  // Pause/relance la lecture video quand isPaused, showViewers ou replying change.
   useEffect(() => {
     if (!isVideo || !videoRef.current) return
-    if (isPaused || showViewers) {
+    if (isPaused || showViewers || replying) {
       videoRef.current.pause()
     } else {
       videoRef.current.play().catch(() => {})
     }
-  }, [isPaused, showViewers, isVideo])
+  }, [isPaused, showViewers, replying, isVideo])
 
   const handleDelete = async () => {
     if (!story) return
@@ -138,6 +145,19 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
       } catch {
         setViewersList([])
       }
+    }
+  }
+
+  const handleSendReply = async () => {
+    if (!story || !replyText.trim() || sendingReply) return
+    setSendingReply(true)
+    try {
+      await apiSendTextMessage(story.userId, replyText.trim())
+      onClose()
+    } catch {
+      // Erreur silencieuse : l'utilisateur peut reessayer.
+    } finally {
+      setSendingReply(false)
     }
   }
 
@@ -207,8 +227,12 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
           </div>
         )}
 
-        <button aria-label="Precedent" onClick={goPrev} className="absolute inset-y-0 left-0 w-1/3" />
-        <button aria-label="Suivant" onClick={goNext} className="absolute inset-y-0 right-0 w-1/3" />
+        {!isMine && (
+          <>
+            <button aria-label="Precedent" onClick={goPrev} className="absolute inset-y-0 left-0 w-1/3" />
+            <button aria-label="Suivant" onClick={goNext} className="absolute inset-y-0 right-0 w-1/3" />
+          </>
+        )}
       </div>
 
       {isMine && (
@@ -220,6 +244,28 @@ export default function StoryViewer({ groups, startGroupIndex, onClose }: StoryV
           <Eye size={16} />
           <span>{viewerCount}</span>
         </button>
+      )}
+
+      {!isMine && (
+        <div className="flex items-center gap-2 px-3 pb-4 pt-2 safe-bottom">
+          <input
+            type="text"
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onFocus={() => setIsPaused(true)}
+            placeholder={`Repondre a ${group.user.displayName}...`}
+            className="h-11 flex-1 rounded-full border border-white/30 bg-white/10 px-4 text-sm text-white outline-none placeholder:text-white/50 focus:border-white/60"
+          />
+          <button
+            type="button"
+            onClick={() => void handleSendReply()}
+            disabled={!replying || sendingReply}
+            aria-label="Envoyer"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white disabled:opacity-40"
+          >
+            <Send size={18} />
+          </button>
+        </div>
       )}
 
       {showViewers && (
