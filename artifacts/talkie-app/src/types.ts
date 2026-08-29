@@ -68,3 +68,7 @@ export interface PrivacySettings {
   showStatus: boolean
   searchableByPhone: boolean
 }
+export interface MessageEditHistoryEntry {
+  previousContent: string | null
+  editedAt: string
+}
