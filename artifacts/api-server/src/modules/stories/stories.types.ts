@@ -1,9 +1,12 @@
 export type StoryVisibilityMode = 'all' | 'except' | 'only'
+export type StoryType = 'image' | 'video' | 'text'
 
 export interface StoryRow {
   id: string
   user_id: string
-  image_url: string
+  image_url: string | null
+  type: StoryType
+  text_content: string | null
   created_at: Date
   expires_at: Date
   visibility_mode: StoryVisibilityMode
@@ -12,7 +15,9 @@ export interface StoryRow {
 export interface Story {
   id: string
   userId: string
-  imageUrl: string
+  imageUrl: string | null
+  type: StoryType
+  textContent: string | null
   createdAt: string
   expiresAt: string
   viewed: boolean
@@ -37,4 +42,4 @@ export interface StoryViewer {
   displayName: string
   avatarColor: string
   avatarUrl?: string
-    }
+  }
