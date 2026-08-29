@@ -405,6 +405,12 @@ async function openHistory(messageId: string) {
         {typing && <p className="mt-3 text-xs italic text-paperDim">{otherUser.displayName} est en train d’écrire…</p>}
         {error && <p className="mt-3 text-center text-xs text-alert">{error}</p>}
       </main><form onSubmit={handleSubmit} className="safe-bottom border-t border-line bg-ink/95 px-4 py-3 backdrop-blur">
+        {pendingSend && (
+        <div className="mx-auto mb-2 flex max-w-md items-center justify-between rounded-xl border border-line bg-panel2 px-4 py-2">
+          <span className="text-sm text-paper">Envoi dans quelques secondes…</span>
+          <button type="button" onClick={cancelPendingSend} className="text-sm font-semibold text-transmit">Annuler</button>
+        </div>
+      )}
         <div className="mx-auto flex max-w-md items-end gap-2">
           {recorder.state === 'recording' ? (
             <div className="flex min-h-11 flex-1 items-center gap-3 rounded-2xl border border-alert/40 bg-panel px-4">
