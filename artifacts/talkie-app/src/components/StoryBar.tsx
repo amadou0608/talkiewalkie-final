@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Type, Image as ImageIcon, Video, X } from 'lucide-react'
 import Avatar from '@/components/Avatar'
 import StoryVisibilityPicker from '@/components/StoryVisibilityPicker'
 import { useAuth } from '@/context/AuthContext'
@@ -9,6 +9,7 @@ import {
   apiMyStories,
   apiUploadStory,
   type StoryGroup,
+  type StoryType,
   type StoryVisibilityMode,
 } from '@/lib/storiesApi'
 
@@ -17,14 +18,17 @@ interface StoryBarProps {
 }
 
 // Bandeau horizontal de stories, affiche en haut de l'accueil (Phase 21).
-// Le premier cercle est toujours "Ma story" (ajouter / voir la mienne).
+// Phase 23 : menu Texte / Photo / Video au clic sur le "+".
 export default function StoryBar({ onOpenGroup }: StoryBarProps) {
   const { user } = useAuth()
   const [groups, setGroups] = useState<StoryGroup[]>([])
   const [hasOwnStories, setHasOwnStories] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+  const [pendingType, setPendingType] = useState<StoryType | null>(null)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     apiContactsStories().then(setGroups).catch(() => {})
@@ -35,24 +39,56 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
     load()
   }, [])
 
-  const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  function openMenu() {
+    setShowMenu(true)
+  }
+
+  function handleChooseText() {
+    setShowMenu(false)
+    setPendingType('text')
+    setPendingFile(null)
+  }
+
+  function handleChoosePhoto() {
+    setShowMenu(false)
+    imageInputRef.current?.click()
+  }
+
+  function handleChooseVideo() {
+    setShowMenu(false)
+    videoInputRef.current?.click()
+  }
+
+  function handleImagePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file) return
-    setPendingFile(file)
     e.target.value = ''
+    if (!file) return
+    setPendingType('image')
+    setPendingFile(file)
+  }
+
+  function handleVideoPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPendingType('video')
+    setPendingFile(file)
   }
 
   const handleVisibilityCancel = () => {
+    setPendingType(null)
     setPendingFile(null)
   }
 
-  const handleVisibilityConfirm = async (mode: StoryVisibilityMode, targetUserIds: string[]) => {
+  const handleVisibilityConfirm = async (mode: StoryVisibilityMode, targetUserIds: string[], content: string) => {
+    if (!pendingType) return
+    const type = pendingType
     const file = pendingFile
-    if (!file) return
+    setPendingType(null)
     setPendingFile(null)
     setUploading(true)
     try {
-      await apiUploadStory(file, mode, targetUserIds)
+      await apiUploadStory(type, file, content, mode, targetUserIds)
       const myStories = await apiMyStories()
       setHasOwnStories(myStories.length > 0)
       if (user && myStories.length > 0) {
@@ -78,13 +114,13 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
 
   const handleOwnClick = async () => {
     if (!hasOwnStories) {
-      fileInputRef.current?.click()
+      openMenu()
       return
     }
     if (!user) return
     const myStories = await apiMyStories().catch(() => [])
     if (myStories.length === 0) {
-      fileInputRef.current?.click()
+      openMenu()
       return
     }
     const ownGroup: StoryGroup = {
@@ -113,11 +149,17 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
           className={`relative flex h-16 w-16 items-center justify-center rounded-full ${hasOwnStories ? 'ring-2 ring-transmit ring-offset-2 ring-offset-ink' : ''}`}
         >
           <Avatar name={user.displayName} color={user.avatarColor} avatarUrl={resolveAvatarUrl(user.avatarUrl)} size={60} />
-          <span className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-transmit text-ink">
+          <span
+            role="button"
+            aria-label="Ajouter un statut"
+            onClick={(e) => { e.stopPropagation(); openMenu() }}
+            className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-transmit text-ink"
+          >
             <Plus size={13} />
           </span>
         </button>
-        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePick} />
+        <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImagePick} />
+        <input ref={videoInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" onChange={handleVideoPick} />
         <span className="text-[11px] text-paperDim">{uploading ? 'Envoi...' : 'Ma story'}</span>
       </div>
 
@@ -135,9 +177,32 @@ export default function StoryBar({ onOpenGroup }: StoryBarProps) {
         </button>
       ))}
 
-      {pendingFile && (
-        <StoryVisibilityPicker onConfirm={handleVisibilityConfirm} onCancel={handleVisibilityCancel} />
+      {showMenu && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={() => setShowMenu(false)}>
+          <div className="w-full max-w-md rounded-t-2xl bg-neutral-900 p-4 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Nouveau statut</h2>
+              <button onClick={() => setShowMenu(false)} aria-label="Fermer" className="text-neutral-400 hover:text-white"><X size={20} /></button>
+            </div>
+            <button type="button" onClick={handleChooseText} className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-neutral-800">
+              <Type size={20} className="text-emerald-400" />
+              <span className="text-white">Ecrire un statut</span>
+            </button>
+            <button type="button" onClick={handleChoosePhoto} className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-neutral-800">
+              <ImageIcon size={20} className="text-emerald-400" />
+              <span className="text-white">Photo</span>
+            </button>
+            <button type="button" onClick={handleChooseVideo} className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-neutral-800">
+              <Video size={20} className="text-emerald-400" />
+              <span className="text-white">Video</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingType && (
+        <StoryVisibilityPicker storyType={pendingType} onConfirm={handleVisibilityConfirm} onCancel={handleVisibilityCancel} />
       )}
     </div>
   )
-}
+      }
