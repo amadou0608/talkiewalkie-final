@@ -22,6 +22,7 @@ export interface Contact {
   user: User
   relation: ContactRelation
   favorite?: boolean
+  hideReadReceipts?: boolean   // Theme 2 : accuses de lecture masques pour ce contact
 }
 
 // Phase 8 : forme telle que renvoyee par GET /voice-messages (backend). Le
@@ -71,4 +72,4 @@ export interface PrivacySettings {
 export interface MessageEditHistoryEntry {
   previousContent: string | null
   editedAt: string
-}
+  }
