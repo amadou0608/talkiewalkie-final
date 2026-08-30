@@ -8,6 +8,9 @@ import {
   listContactsStories,
   markStoryViewed,
   getStoryViewers,
+  editStory,
+  getStoryForOwner,
+  getStoryEditHistory,
   deleteStory,
 } from './stories.service'
 import type { Story, StoryRow, StoryVisibilityMode, StoryType } from './stories.types'
@@ -21,6 +24,7 @@ function toStory(row: StoryRow): Story {
     textContent: row.text_content,
     createdAt: row.created_at.toISOString(),
     expiresAt: row.expires_at.toISOString(),
+    editedAt: row.edited_at ? row.edited_at.toISOString() : null,
     viewed: false,
     visibilityMode: row.visibility_mode,
   }
@@ -85,6 +89,41 @@ export const viewStory = asyncHandler(async (req: Request, res: Response) => {
 export const getViewers = asyncHandler(async (req: Request, res: Response) => {
   const viewers = await getStoryViewers(req.params.storyId, req.userId!)
   res.status(200).json({ viewers })
+})
+
+export const editStoryHandler = asyncHandler(async (req: Request, res: Response) => {
+  const existing = await getStoryForOwner(req.userId!, req.params.storyId)
+
+  let imageUrl: string | null = existing.image_url
+  if (req.file) {
+    if (existing.type === 'video') {
+      imageUrl = saveStoryVideo(req.file)
+    } else if (existing.type === 'image') {
+      imageUrl = saveStoryImage(req.file)
+    } else {
+      throw new AppError('INVALID_STORY_TYPE', 'Un statut texte ne peut pas recevoir de media.', 400)
+    }
+  }
+
+  let textContent: string | null
+  if (existing.type === 'text') {
+    textContent = typeof req.body.textContent === 'string' ? req.body.textContent.trim() : ''
+    if (!textContent) throw new AppError('INVALID_TEXT_CONTENT', 'Le texte du statut est vide.', 400)
+  } else if (typeof req.body.textContent === 'string' && req.body.textContent.trim()) {
+    textContent = req.body.textContent.trim()
+  } else if (req.body.textContent === '') {
+    textContent = null
+  } else {
+    textContent = existing.text_content
+  }
+
+  const updated = await editStory(req.userId!, req.params.storyId, existing.type, imageUrl, textContent)
+  res.status(200).json({ story: toStory(updated) })
+})
+
+export const getStoryHistory = asyncHandler(async (req: Request, res: Response) => {
+  const history = await getStoryEditHistory(req.userId!, req.params.storyId)
+  res.status(200).json({ history })
 })
 
 export const removeStory = asyncHandler(async (req: Request, res: Response) => {
