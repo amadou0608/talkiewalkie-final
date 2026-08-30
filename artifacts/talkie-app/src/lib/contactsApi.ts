@@ -83,3 +83,12 @@ export async function apiBlockContact(contactUserId: string): Promise<void> {
 export async function apiUnblockContact(contactUserId: string): Promise<void> {
   await request<void>(`/contacts/${contactUserId}/unblock`, { method: 'POST' })
 }
+
+// Theme 2 : accuses de lecture granulaires par contact. hideReadReceipts=true
+// signifie "ce contact ne verra jamais mes coches bleues sur mes messages".
+export async function apiSetReadReceipts(contactUserId: string, hideReadReceipts: boolean): Promise<void> {
+  await request<void>(`/contacts/${contactUserId}/read-receipts`, {
+    method: 'PATCH',
+    body: JSON.stringify({ hideReadReceipts }),
+  })
+  }
