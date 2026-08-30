@@ -163,6 +163,16 @@ export async function getStoryViewers(storyId: string, ownerId: string): Promise
     avatarUrl: row.avatar_url ?? undefined,
   }))
 }
+export async function getStoryForOwner(userId: string, storyId: string): Promise<StoryRow> {
+  const result = await pool.query<StoryRow>(
+    'SELECT * FROM stories WHERE id = $1 AND user_id = $2',
+    [storyId, userId],
+  )
+  if (result.rows.length === 0) {
+    throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
+  }
+  return result.rows[0]
+}
 
 // Edite le texte/legende et/ou le media d'une story, dans la fenetre des 20
 // minutes suivant sa creation. Archive l'ancienne version dans
