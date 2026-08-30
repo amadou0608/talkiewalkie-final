@@ -17,6 +17,7 @@ import {
   apiListBlocked,
   apiListContacts,
   apiRemoveContact,
+  apiSetReadReceipts,
   apiUnblockContact,
 } from '@/lib/contactsApi'
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket'
@@ -35,6 +36,7 @@ interface ContactsContextValue {
   removeContact: (contactUserId: string) => Promise<void>
   blockContact: (contactUserId: string) => Promise<void>
   unblockContact: (contactUserId: string) => Promise<void>
+  toggleReadReceipts: (contactUserId: string, hide: boolean) => Promise<void>
   findById: (userId: string | undefined) => Contact | undefined
 }
 
@@ -150,6 +152,25 @@ export function ContactsProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  // Theme 2 : bascule locale optimiste, puis appel serveur. En cas d'echec,
+  // on revient a l'etat precedent pour ne pas afficher un toggle incoherent.
+  const toggleReadReceipts = useCallback(
+    async (contactUserId: string, hide: boolean) => {
+      const patch = (list: Contact[]) =>
+        list.map((c) => (c.user.id === contactUserId ? { ...c, hideReadReceipts: hide } : c))
+      setAccepted(patch)
+      try {
+        await apiSetReadReceipts(contactUserId, hide)
+      } catch (err) {
+        setAccepted((prev) =>
+          prev.map((c) => (c.user.id === contactUserId ? { ...c, hideReadReceipts: !hide } : c)),
+        )
+        throw err
+      }
+    },
+    [],
+  )
+
   const findById = useCallback(
     (userId: string | undefined) => {
       if (!userId) return undefined
@@ -171,9 +192,10 @@ export function ContactsProvider({ children }: { children: ReactNode }) {
       removeContact,
       blockContact,
       unblockContact,
+      toggleReadReceipts,
       findById,
     }),
-    [accepted, pending, blocked, loading, error, refresh, refreshBlocked, addContact, removeContact, blockContact, unblockContact, findById],
+    [accepted, pending, blocked, loading, error, refresh, refreshBlocked, addContact, removeContact, blockContact, unblockContact, toggleReadReceipts, findById],
   )
 
   return <ContactsContext.Provider value={value}>{children}</ContactsContext.Provider>
@@ -183,4 +205,4 @@ export function useContacts(): ContactsContextValue {
   const ctx = useContext(ContactsContext)
   if (!ctx) throw new Error('useContacts doit etre utilise a l\'interieur de <ContactsProvider>')
   return ctx
-}
+  }
