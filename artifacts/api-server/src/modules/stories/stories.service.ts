@@ -1,7 +1,9 @@
 import { pool } from '../../db/pool'
 import { AppError } from '../../utils/AppError'
 import { avatarColorFor } from '../../utils/presentation'
-import type { StoryRow, StoryGroup, StoryVisibilityMode, StoryViewer, StoryType } from './stories.types'
+import type { StoryRow, StoryGroup, StoryVisibilityMode, StoryViewer, StoryType, StoryEditHistoryEntry } from './stories.types'
+
+const EDIT_WINDOW_MS = 20 * 60 * 1000
 
 export async function createStory(
   userId: string,
@@ -109,6 +111,7 @@ export async function listContactsStories(userId: string): Promise<StoryGroup[]>
       textContent: row.text_content,
       createdAt: row.created_at.toISOString(),
       expiresAt: row.expires_at.toISOString(),
+      editedAt: row.edited_at ? row.edited_at.toISOString() : null,
       viewed,
       visibilityMode: row.visibility_mode,
     })
@@ -161,9 +164,90 @@ export async function getStoryViewers(storyId: string, ownerId: string): Promise
   }))
 }
 
+// Edite le texte/legende et/ou le media d'une story, dans la fenetre des 20
+// minutes suivant sa creation. Archive l'ancienne version dans
+// story_edit_history avant d'ecraser, comme editTextMessage pour les messages.
+export async function editStory(
+  userId: string,
+  storyId: string,
+  newType: StoryType,
+  newImageUrl: string | null,
+  newTextContent: string | null,
+): Promise<StoryRow> {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const existingResult = await client.query<StoryRow>(
+      'SELECT * FROM stories WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      [storyId, userId],
+    )
+    if (existingResult.rows.length === 0) {
+      throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
+    }
+    const existing = existingResult.rows[0]
+
+    const ageMs = Date.now() - existing.created_at.getTime()
+    if (ageMs > EDIT_WINDOW_MS) {
+      throw new AppError('EDIT_WINDOW_EXPIRED', 'Le delai de modification (20 minutes) est depasse.', 403)
+    }
+
+    await client.query(
+      `INSERT INTO story_edit_history (story_id, previous_image_url, previous_text_content, previous_type)
+       VALUES ($1, $2, $3, $4)`,
+      [storyId, existing.image_url, existing.text_content, existing.type],
+    )
+
+    const updated = await client.query<StoryRow>(
+      `UPDATE stories SET image_url = $1, text_content = $2, type = $3, edited_at = now()
+       WHERE id = $4
+       RETURNING *`,
+      [newImageUrl, newTextContent, newType, storyId],
+    )
+
+    await client.query('COMMIT')
+    return updated.rows[0]
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+export async function getStoryEditHistory(userId: string, storyId: string): Promise<StoryEditHistoryEntry[]> {
+  const story = await pool.query<StoryRow>(
+    'SELECT * FROM stories WHERE id = $1 AND user_id = $2',
+    [storyId, userId],
+  )
+  if (story.rows.length === 0) {
+    throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
+  }
+
+  const result = await pool.query<{
+    previous_image_url: string | null
+    previous_text_content: string | null
+    previous_type: StoryType
+    edited_at: Date
+  }>(
+    `SELECT previous_image_url, previous_text_content, previous_type, edited_at
+     FROM story_edit_history
+     WHERE story_id = $1
+     ORDER BY edited_at ASC`,
+    [storyId],
+  )
+
+  return result.rows.map((row) => ({
+    previousImageUrl: row.previous_image_url,
+    previousTextContent: row.previous_text_content,
+    previousType: row.previous_type,
+    editedAt: row.edited_at.toISOString(),
+  }))
+}
+
 export async function deleteStory(userId: string, storyId: string): Promise<void> {
   const result = await pool.query('DELETE FROM stories WHERE id = $1 AND user_id = $2', [storyId, userId])
   if (result.rowCount === 0) {
     throw new AppError('STORY_NOT_FOUND', 'Story introuvable.', 404)
   }
-       }
+  }
