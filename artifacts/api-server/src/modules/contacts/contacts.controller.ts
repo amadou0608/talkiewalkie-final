@@ -4,6 +4,7 @@ import { asyncHandler } from '../../utils/asyncHandler'
 import {
   addContactSchema,
   contactUserIdParamSchema,
+  readReceiptsBodySchema,
   searchQuerySchema,
 } from './contacts.schemas'
 import {
@@ -13,6 +14,7 @@ import {
   listContacts,
   removeContact,
   searchUser,
+  setHideReadReceipts,
   unblockContact,
 } from './contacts.service'
 
@@ -76,5 +78,19 @@ export const unblock = asyncHandler(async (req: Request, res: Response) => {
   }
 
   await unblockContact(req.userId!, parsed.data.contactUserId)
+  res.status(204).end()
+})
+
+export const updateReadReceipts = asyncHandler(async (req: Request, res: Response) => {
+  const paramsParsed = contactUserIdParamSchema.safeParse(req.params)
+  if (!paramsParsed.success) {
+    throw new AppError('VALIDATION_ERROR', 'Identifiant de contact invalide.')
+  }
+  const bodyParsed = readReceiptsBodySchema.safeParse(req.body)
+  if (!bodyParsed.success) {
+    throw new AppError('VALIDATION_ERROR', bodyParsed.error.issues[0]?.message ?? 'Donnees invalides.')
+  }
+
+  await setHideReadReceipts(req.userId!, paramsParsed.data.contactUserId, bodyParsed.data.hide)
   res.status(204).end()
 })
