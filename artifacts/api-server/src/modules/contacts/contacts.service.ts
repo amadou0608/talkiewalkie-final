@@ -18,14 +18,16 @@ export type ContactRelation = 'accepted' | 'pending' | 'blocked'
 export interface ContactWithUser {
   user: PublicUser
   relation: ContactRelation
+  hideReadReceipts: boolean
 }
 
 interface ContactRow extends UserRow {
   contact_status: ContactRelation
+  hide_read_receipts: boolean
 }
 
 function toContactWithUser(row: ContactRow): ContactWithUser {
-  return { user: toPublicUser(row), relation: row.contact_status }
+  return { user: toPublicUser(row), relation: row.contact_status, hideReadReceipts: row.hide_read_receipts }
 }
 
 async function getRelationStatus(userId: string, contactUserId: string): Promise<ContactRelation | null> {
@@ -40,7 +42,7 @@ export async function listContacts(
   userId: string,
 ): Promise<{ accepted: ContactWithUser[]; pending: ContactWithUser[] }> {
   const result = await pool.query<ContactRow>(
-    `SELECT u.*, c.status AS contact_status
+    `SELECT u.*, c.status AS contact_status, c.hide_read_receipts
      FROM contacts c
      JOIN users u ON u.id = c.contact_user_id
      WHERE c.user_id = $1 AND c.status IN ('accepted', 'pending')
@@ -58,7 +60,7 @@ export async function listContacts(
 
 export async function listBlocked(userId: string): Promise<ContactWithUser[]> {
   const result = await pool.query<ContactRow>(
-    `SELECT u.*, c.status AS contact_status
+    `SELECT u.*, c.status AS contact_status, c.hide_read_receipts
      FROM contacts c
      JOIN users u ON u.id = c.contact_user_id
      WHERE c.user_id = $1 AND c.status = 'blocked'
@@ -108,7 +110,7 @@ export async function addContact(userId: string, rawUsername: string): Promise<C
     [userId, target.id],
   )
 
-  return { user: toPublicUser(target), relation: 'accepted' }
+  return { user: toPublicUser(target), relation: 'accepted', hideReadReceipts: false }
 }
 
 export async function removeContact(userId: string, contactUserId: string): Promise<void> {
@@ -154,4 +156,27 @@ export async function unblockContact(userId: string, contactUserId: string): Pro
   if (result.rowCount === 0) {
     throw new AppError('CONTACT_NOT_FOUND', 'Ce contact n\u2019est pas bloque.', 404)
   }
+}
+
+// Thème 2 — accusés de lecture granulaires par contact (30 août 2026).
+// hide_read_receipts sur la ligne (user_id, contact_user_id) : "je ne veux
+// pas que ce contact voie que j'ai lu ses messages". Consulté par
+// messages.service.ts (markRead / markConversationRead).
+export async function getHideReadReceipts(userId: string, contactUserId: string): Promise<boolean> {
+  const result = await pool.query<{ hide_read_receipts: boolean }>(
+    'SELECT hide_read_receipts FROM contacts WHERE user_id = $1 AND contact_user_id = $2',
+    [userId, contactUserId],
+  )
+  return result.rows[0]?.hide_read_receipts ?? false
+}
+
+export async function setHideReadReceipts(userId: string, contactUserId: string, hide: boolean): Promise<void> {
+  const status = await getRelationStatus(userId, contactUserId)
+  if (status !== 'accepted') {
+    throw new AppError('CONTACT_NOT_FOUND', 'Contact introuvable.', 404)
+  }
+  await pool.query(
+    'UPDATE contacts SET hide_read_receipts = $3, updated_at = now() WHERE user_id = $1 AND contact_user_id = $2',
+    [userId, contactUserId, hide],
+  )
 }
