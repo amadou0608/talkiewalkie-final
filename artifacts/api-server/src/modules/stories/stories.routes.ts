@@ -8,6 +8,8 @@ import {
   getContactsStories,
   viewStory,
   getViewers,
+  editStoryHandler,
+  getStoryHistory,
   removeStory,
 } from './stories.controller'
 
@@ -21,4 +23,6 @@ storiesRouter.get('/', requireAuth, getContactsStories)
 storiesRouter.get('/media/:filename', storyFile)
 storiesRouter.post('/:storyId/view', requireAuth, viewStory)
 storiesRouter.get('/:storyId/viewers', requireAuth, getViewers)
+storiesRouter.patch('/:storyId', requireAuth, storyUpload.single('media'), editStoryHandler)
+storiesRouter.get('/:storyId/history', requireAuth, getStoryHistory)
 storiesRouter.delete('/:storyId', requireAuth, removeStory)
