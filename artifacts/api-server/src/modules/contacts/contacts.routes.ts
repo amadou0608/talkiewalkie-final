@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { requireAuth } from '../../middleware/requireAuth'
 import { strictRateLimit } from '../../middleware/security'
-import { add, block, blocked, list, remove, search, unblock } from './contacts.controller'
+import { add, block, blocked, list, remove, search, unblock, updateReadReceipts } from './contacts.controller'
 
 export const contactsRouter = Router()
 
@@ -24,3 +24,4 @@ contactsRouter.post('/', add)
 contactsRouter.delete('/:contactUserId', remove)
 contactsRouter.post('/:contactUserId/block', block)
 contactsRouter.post('/:contactUserId/unblock', unblock)
+contactsRouter.patch('/:contactUserId/read-receipts', updateReadReceipts)
