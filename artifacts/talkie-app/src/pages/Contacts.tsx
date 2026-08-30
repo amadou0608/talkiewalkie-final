@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Search, ShieldOff, Trash2, UserPlus, Loader2 } from 'lucide-react'
+import { BellOff, Bell, Search, ShieldOff, Trash2, UserPlus, Loader2 } from 'lucide-react'
 import TopBar from '@/components/TopBar'
 import BottomNav from '@/components/BottomNav'
 import Avatar from '@/components/Avatar'
@@ -10,7 +10,7 @@ import { useContacts } from '@/context/ContactsContext'
 export default function Contacts() {
   const [query, setQuery] = useState('')
   const navigate = useNavigate()
-  const { accepted, pending, loading, error, removeContact, blockContact } = useContacts()
+  const { accepted, pending, loading, error, removeContact, blockContact, toggleReadReceipts } = useContacts()
   // Evite qu'un double-tap declenche deux appels DELETE/block pour le meme contact.
   const [pendingActionId, setPendingActionId] = useState<string | null>(null)
 
@@ -38,6 +38,15 @@ export default function Contacts() {
     setPendingActionId(contactUserId)
     try {
       await blockContact(contactUserId)
+    } finally {
+      setPendingActionId(null)
+    }
+  }
+
+  const handleToggleReadReceipts = async (contactUserId: string, currentlyHidden: boolean | undefined) => {
+    setPendingActionId(contactUserId)
+    try {
+      await toggleReadReceipts(contactUserId, !currentlyHidden)
     } finally {
       setPendingActionId(null)
     }
@@ -123,6 +132,21 @@ export default function Contacts() {
                         <StatusDot status={c.user.status} />
                       </button>
                       <button
+                        onClick={() => handleToggleReadReceipts(c.user.id, c.hideReadReceipts)}
+                        disabled={pendingActionId === c.user.id}
+                        aria-label={
+                          c.hideReadReceipts
+                            ? `Reactiver les accuses de lecture pour ${c.user.displayName}`
+                            : `Masquer les accuses de lecture pour ${c.user.displayName}`
+                        }
+                        title={c.hideReadReceipts ? 'Accuses de lecture masques' : 'Accuses de lecture visibles'}
+                        className={`rounded-full p-2 transition-colors hover:bg-panel2 disabled:opacity-50 ${
+                          c.hideReadReceipts ? 'text-transmit' : 'text-paperDim'
+                        }`}
+                      >
+                        {c.hideReadReceipts ? <BellOff size={16} /> : <Bell size={16} />}
+                      </button>
+                      <button
                         onClick={() => handleBlock(c.user.id)}
                         disabled={pendingActionId === c.user.id}
                         aria-label={`Bloquer ${c.user.displayName}`}
@@ -150,4 +174,4 @@ export default function Contacts() {
       <BottomNav />
     </div>
   )
-}
+         }
