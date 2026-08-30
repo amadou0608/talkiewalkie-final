@@ -36,6 +36,7 @@ export type AppErrorCode =
   | 'INVALID_VISIBILITY_MODE'
   | 'INVALID_STORY_TYPE'
   | 'INVALID_TEXT_CONTENT'
+  | 'EDIT_WINDOW_EXPIRED'
 
 export class AppError extends Error {
   code: AppErrorCode
