@@ -1,4 +1,5 @@
-// Service stories — Phase 21, etendu Phase 23 (texte, video, legende).
+// Service stories — Phase 21, etendu Phase 23 (texte, video, legende),
+// Phase 24 (edition dans la fenetre des 20 min, historique).
 import { AuthApiError } from './authApi'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
@@ -14,6 +15,7 @@ export interface Story {
   textContent: string | null
   createdAt: string
   expiresAt: string
+  editedAt: string | null
   viewed: boolean
   visibilityMode: StoryVisibilityMode
 }
@@ -36,6 +38,13 @@ export interface StoryViewer {
   displayName: string
   avatarColor: string
   avatarUrl?: string
+}
+
+export interface StoryEditHistoryEntry {
+  previousImageUrl: string | null
+  previousTextContent: string | null
+  previousType: StoryType
+  editedAt: string
 }
 
 async function request<T>(path: string, options: RequestInit): Promise<T> {
@@ -106,6 +115,23 @@ export async function apiViewStory(storyId: string): Promise<void> {
 export async function apiStoryViewers(storyId: string): Promise<StoryViewer[]> {
   const { viewers } = await request<{ viewers: StoryViewer[] }>(`/stories/${storyId}/viewers`, { method: 'GET' })
   return viewers
+}
+
+export async function apiEditStory(storyId: string, textContent: string | null, file: File | null): Promise<Story> {
+  const formData = new FormData()
+  if (textContent !== null) formData.append('textContent', textContent)
+  if (file) formData.append('media', file)
+  const { story } = await request<{ story: Story }>(`/stories/${storyId}`, {
+    method: 'PATCH',
+    headers: { 'X-Requested-With': 'talkie-web' },
+    body: formData,
+  })
+  return story
+}
+
+export async function apiStoryEditHistory(storyId: string): Promise<StoryEditHistoryEntry[]> {
+  const { history } = await request<{ history: StoryEditHistoryEntry[] }>(`/stories/${storyId}/history`, { method: 'GET' })
+  return history
 }
 
 export async function apiDeleteStory(storyId: string): Promise<void> {
