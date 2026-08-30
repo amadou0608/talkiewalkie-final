@@ -14,5 +14,11 @@ export const contactUserIdParamSchema = z.object({
   contactUserId: z.string().uuid('Identifiant de contact invalide.'),
 })
 
+// Thème 2 — activer/désactiver les accusés de lecture pour un contact précis.
+export const readReceiptsBodySchema = z.object({
+  hide: z.boolean(),
+})
+
 export type SearchQuery = z.infer<typeof searchQuerySchema>
 export type AddContactInput = z.infer<typeof addContactSchema>
+export type ReadReceiptsInput = z.infer<typeof readReceiptsBodySchema>
