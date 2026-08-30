@@ -9,6 +9,7 @@ export interface StoryRow {
   text_content: string | null
   created_at: Date
   expires_at: Date
+  edited_at: Date | null
   visibility_mode: StoryVisibilityMode
 }
 
@@ -20,6 +21,7 @@ export interface Story {
   textContent: string | null
   createdAt: string
   expiresAt: string
+  editedAt: string | null
   viewed: boolean
   visibilityMode: StoryVisibilityMode
 }
@@ -42,4 +44,11 @@ export interface StoryViewer {
   displayName: string
   avatarColor: string
   avatarUrl?: string
+}
+
+export interface StoryEditHistoryEntry {
+  previousImageUrl: string | null
+  previousTextContent: string | null
+  previousType: StoryType
+  editedAt: string
   }
