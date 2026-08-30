@@ -1,6 +1,6 @@
 import { pool } from '../../db/pool'
 import { AppError } from '../../utils/AppError'
-import { isAcceptedContact } from '../contacts/contacts.service'
+import { isAcceptedContact, getHideReadReceipts } from '../contacts/contacts.service'
 import { avatarColorFor } from '../../utils/presentation'
 
 const EDIT_WINDOW_MINUTES = 20
@@ -80,22 +80,35 @@ export async function createTextMessage(senderId: string, receiverId: string, co
   return mapMessage(result.rows[0])
 }
 
+// Thème 2 — accusés de lecture granulaires par contact (30 août 2026).
+// read_at trace la lecture reelle (toujours mis a jour, sert au badge "non
+// lus" du destinataire). status ne passe a 'read' que si l'expediteur est
+// autorise a le voir (getHideReadReceipts) ; sinon il reste a 'delivered'.
 export async function markRead(userId: string, messageId: string) {
-  const result = await pool.query<MessageRow>(`${baseSelect}
-     WHERE m.id = $1 AND m.receiver_id = $2 AND m.status <> 'read'
-     LIMIT 1`, [messageId, userId])
-  if (!result.rows[0]) return null
-  await pool.query(`UPDATE messages SET status = 'read' WHERE id = $1 AND receiver_id = $2 AND status <> 'read'`, [messageId, userId])
+  const existing = await pool.query<{ senderId: string; status: MessageItem['status']; readAt: Date | null }>(
+    `SELECT sender_id AS "senderId", status, read_at AS "readAt" FROM messages WHERE id = $1 AND receiver_id = $2 LIMIT 1`,
+    [messageId, userId])
+  const row = existing.rows[0]
+  if (!row || row.readAt) return null
+
+  const hideReceipts = await getHideReadReceipts(userId, row.senderId)
+  const nextStatus = hideReceipts ? (row.status === 'sent' ? 'delivered' : row.status) : 'read'
+
+  await pool.query(
+    `UPDATE messages SET read_at = now(), status = $1 WHERE id = $2 AND receiver_id = $3`,
+    [nextStatus, messageId, userId])
   const updated = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1 AND m.receiver_id = $2 LIMIT 1`, [messageId, userId])
   return mapMessage(updated.rows[0])
 }
 
 export async function markConversationRead(userId: string, otherUserId: string) {
   await assertConversation(userId, otherUserId)
+  const hideReceipts = await getHideReadReceipts(userId, otherUserId)
+  const nextStatus = hideReceipts ? 'delivered' : 'read'
   const result = await pool.query<{ id: string; sender_id: string }>(
-    `UPDATE messages SET status = 'read'
-       WHERE receiver_id = $1 AND sender_id = $2 AND status <> 'read' AND deleted_at IS NULL
-       RETURNING id, sender_id`, [userId, otherUserId])
+    `UPDATE messages SET read_at = now(), status = CASE WHEN status = 'read' THEN status ELSE $3 END
+       WHERE receiver_id = $1 AND sender_id = $2 AND read_at IS NULL AND deleted_at IS NULL
+       RETURNING id, sender_id`, [userId, otherUserId, nextStatus])
   return result.rows
 }
 
@@ -181,7 +194,7 @@ export async function getConversationSummaries(userId: string) {
       ORDER BY other_id, created_at DESC
     )
     SELECT c.*, u.username, u.display_name, u.avatar_url,
-      (SELECT COUNT(*)::int FROM messages unread WHERE unread.sender_id = c.other_id AND unread.receiver_id = $1 AND unread.status <> 'read' AND unread.deleted_at IS NULL) AS unread_count
+      (SELECT COUNT(*)::int FROM messages unread WHERE unread.sender_id = c.other_id AND unread.receiver_id = $1 AND unread.read_at IS NULL AND unread.deleted_at IS NULL) AS unread_count
     FROM conversations c JOIN users u ON u.id = c.other_id
     ORDER BY c.created_at DESC`, [userId])
   return result.rows.map((r) => ({
