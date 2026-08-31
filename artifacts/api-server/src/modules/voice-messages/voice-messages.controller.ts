@@ -33,11 +33,17 @@ export const send = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Donnees invalides.')
   }
 
-  const message = await createVoiceMessage(req.userId!, parsed.data.receiverUserId, parsed.data.durationSec, {
-    buffer: req.file.buffer,
-    mimetype: req.file.mimetype,
-    size: req.file.size,
-  })
+  const message = await createVoiceMessage(
+    req.userId!,
+    parsed.data.receiverUserId,
+    parsed.data.durationSec,
+    parsed.data.viewOnce,
+    {
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+    },
+  )
 
   notifyUser(parsed.data.receiverUserId, 'voice-message:new', {
     id: message.id,
@@ -67,7 +73,16 @@ export const listened = asyncHandler(async (req: Request, res: Response) => {
     throw new AppError('VALIDATION_ERROR', 'Identifiant de message invalide.')
   }
 
+  const row = await getVoiceMessageForAccess(parsed.data.id, req.userId!)
   const result = await markListened(parsed.data.id, req.userId!)
+
+  // Theme 2 : l'expediteur est prevenu que son vocal "ecoute unique" vient
+  // d'etre consomme, pour que son UI le retire aussi de son historique
+  // affiche (le fichier n'existe deja plus cote serveur).
+  if (result.consumed) {
+    notifyUser(row.sender_id, 'voice-message:consumed', { id: parsed.data.id })
+  }
+
   res.status(200).json(result)
 })
 
@@ -87,8 +102,9 @@ export const audio = asyncHandler(async (req: Request, res: Response) => {
   try {
     stat = fs.statSync(absolutePath)
   } catch {
-    // Ligne DB presente mais fichier disparu du disque (ex. redeploiement
-    // sans volume persistant — limite connue, voir storage.ts).
+    // Ligne DB presente mais fichier disparu du disque — soit un vocal
+    // "ecoute unique" deja consomme (Theme 2), soit redeploiement sans
+    // volume persistant (limite connue, voir storage.ts).
     throw new AppError('VOICE_MESSAGE_NOT_FOUND', 'Fichier audio introuvable.', 404)
   }
 
