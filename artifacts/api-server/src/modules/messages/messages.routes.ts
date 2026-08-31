@@ -2,7 +2,7 @@ import { Router } from 'express'
 import multer from 'multer'
 import { requireAuth } from '../../middleware/requireAuth'
 import { createText, delivered, list, read, readConversation, summaries, edit, editHistory, remove } from './messages.controller'
-import { createVoice, voiceFile, editVoice } from './messages.voice'
+import { createVoice, voiceFile, editVoice, consumeVoice } from './messages.voice'
 import { createImage, imageFile, MAX_IMAGE_BYTES } from './messages.media'
 import { createVideo, videoFile, MAX_VIDEO_BYTES } from './messages.video'
 import { MAX_VOICE_MESSAGE_BYTES } from '../voice-messages/voice-messages.schemas'
@@ -23,6 +23,7 @@ const voiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize
 messagesRouter.post('/voice', voiceUpload.single('audio'), createVoice)
 messagesRouter.patch('/:messageId/voice', voiceUpload.single('audio'), editVoice)
 messagesRouter.get('/:messageId/voice', voiceFile)
+messagesRouter.post('/:messageId/voice/consume', consumeVoice)
 
 const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_BYTES } })
 messagesRouter.post('/image', imageUpload.single('image'), createImage)
