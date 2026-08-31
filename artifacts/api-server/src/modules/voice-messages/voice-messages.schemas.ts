@@ -9,7 +9,7 @@ export const MAX_VOICE_MESSAGE_BYTES = 8 * 1024 * 1024
 export const MAX_VOICE_MESSAGE_DURATION_SEC = 180
 
 // multipart/form-data : les champs texte arrivent toujours en string, meme
-// pour un nombre — d'ou z.coerce.
+// pour un nombre ou un booleen — d'ou z.coerce.
 export const sendVoiceMessageSchema = z.object({
   receiverUserId: z.string().uuid('Destinataire invalide.'),
   durationSec: z.coerce
@@ -17,6 +17,9 @@ export const sendVoiceMessageSchema = z.object({
     .int()
     .min(1, 'Message vocal trop court.')
     .max(MAX_VOICE_MESSAGE_DURATION_SEC, 'Message vocal trop long (3 minutes maximum).'),
+  // Theme 2 : vocal a ecoute unique. Optionnel + defaut false pour rester
+  // compatible avec un client qui n'enverrait pas encore ce champ.
+  viewOnce: z.coerce.boolean().optional().default(false),
 })
 
 export const voiceMessageIdParamSchema = z.object({
