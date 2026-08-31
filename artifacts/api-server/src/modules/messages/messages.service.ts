@@ -15,6 +15,8 @@ export interface MessageItem {
   fileUrl: string | null
   durationSec: number | null
   status: 'sent' | 'delivered' | 'read'
+  viewOnce: boolean
+  consumedAt: string | null
   createdAt: string
   editedAt: string | null
   deletedAt: string | null
@@ -22,8 +24,8 @@ export interface MessageItem {
   receiver: MessageUser
 }
 
-type MessageRow = Omit<MessageItem, 'createdAt' | 'editedAt' | 'deletedAt' | 'sender' | 'receiver'> & {
-  created_at: Date; edited_at: Date | null; deleted_at: Date | null
+type MessageRow = Omit<MessageItem, 'createdAt' | 'editedAt' | 'deletedAt' | 'consumedAt' | 'sender' | 'receiver'> & {
+  created_at: Date; edited_at: Date | null; deleted_at: Date | null; consumed_at: Date | null
   sender_username: string; sender_display_name: string; sender_avatar_url: string | null
   receiver_username: string; receiver_display_name: string; receiver_avatar_url: string | null
 }
@@ -32,6 +34,7 @@ function mapMessage(row: MessageRow): MessageItem {
   return {
     id: row.id, senderId: row.senderId, receiverId: row.receiverId, type: row.type,
     content: row.content, fileUrl: row.fileUrl, durationSec: row.durationSec, status: row.status,
+    viewOnce: row.viewOnce, consumedAt: row.consumed_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(), editedAt: row.edited_at?.toISOString() ?? null,
     deletedAt: row.deleted_at?.toISOString() ?? null,
     sender: { id: row.senderId, username: row.sender_username, displayName: row.sender_display_name, avatarUrl: row.sender_avatar_url ?? undefined, avatarColor: avatarColorFor(row.sender_username) },
@@ -42,6 +45,7 @@ function mapMessage(row: MessageRow): MessageItem {
 const baseSelect = `
   SELECT m.id, m.sender_id AS "senderId", m.receiver_id AS "receiverId", m.type,
          m.content, m.file_url AS "fileUrl", m.duration_sec AS "durationSec", m.status,
+         m.view_once AS "viewOnce", m.consumed_at,
          m.created_at, m.edited_at, m.deleted_at,
           su.username AS sender_username, su.display_name AS sender_display_name, su.avatar_url AS sender_avatar_url,
           ru.username AS receiver_username, ru.display_name AS receiver_display_name, ru.avatar_url AS receiver_avatar_url
@@ -133,13 +137,15 @@ export async function editTextMessage(userId: string, messageId: string, content
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [messageId])
   return mapMessage(result.rows[0])
 }
+
 export async function editVoiceMessage(userId: string, messageId: string, fileUrl: string, mimeType: string, durationSec: number) {
-  const existing = await pool.query<{ receiver_id: string; type: string; file_url: string | null; created_at: Date; deleted_at: Date | null }>(
-    `SELECT receiver_id, type, file_url, created_at, deleted_at FROM messages WHERE id = $1 AND sender_id = $2 LIMIT 1`, [messageId, userId])
+  const existing = await pool.query<{ receiver_id: string; type: string; file_url: string | null; created_at: Date; deleted_at: Date | null; view_once: boolean }>(
+    `SELECT receiver_id, type, file_url, created_at, deleted_at, view_once FROM messages WHERE id = $1 AND sender_id = $2 LIMIT 1`, [messageId, userId])
   const row = existing.rows[0]
   if (!row) throw new AppError('NOT_FOUND', 'Message introuvable.', 404)
   if (row.type !== 'voice') throw new AppError('VALIDATION_ERROR', 'Seuls les messages vocaux peuvent être modifiés ainsi.')
   if (row.deleted_at) throw new AppError('VALIDATION_ERROR', 'Ce message a été supprimé.')
+  if (row.view_once) throw new AppError('VALIDATION_ERROR', 'Un vocal à écoute unique ne peut pas être modifié.')
 
   const ageMinutes = (Date.now() - row.created_at.getTime()) / 60000
   if (ageMinutes > EDIT_WINDOW_MINUTES) {
@@ -158,7 +164,8 @@ export async function editVoiceMessage(userId: string, messageId: string, fileUr
 
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [messageId])
   return { message: mapMessage(result.rows[0]), previousFileUrl }
-                                         }
+}
+
 export async function getEditHistory(userId: string, messageId: string) {
   const owner = await pool.query<{ sender_id: string; receiver_id: string }>(
     `SELECT sender_id, receiver_id FROM messages WHERE id = $1 LIMIT 1`, [messageId])
@@ -222,13 +229,14 @@ export async function createChatVoiceMessage(
   fileUrl: string,
   mimeType: string,
   delivered: boolean,
+  viewOnce: boolean,
 ) {
   await assertConversation(senderId, receiverId)
   const status = delivered ? 'delivered' : 'sent'
   const inserted = await pool.query<{ id: string }>(
-    `INSERT INTO messages (sender_id, receiver_id, type, file_url, duration_sec, status, mime_type)
-     VALUES ($1, $2, 'voice', $3, $4, $5, $6) RETURNING id`,
-    [senderId, receiverId, fileUrl, durationSec, status, mimeType],
+    `INSERT INTO messages (sender_id, receiver_id, type, file_url, duration_sec, status, mime_type, view_once)
+     VALUES ($1, $2, 'voice', $3, $4, $5, $6, $7) RETURNING id`,
+    [senderId, receiverId, fileUrl, durationSec, status, mimeType, viewOnce],
   )
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [inserted.rows[0].id])
   return mapMessage(result.rows[0])
@@ -266,4 +274,22 @@ export async function getChatMessageFile(messageId: string, requesterId: string,
     throw new AppError('FILE_NOT_FOUND', 'Fichier introuvable ou accès refusé.', 404)
   }
   return { ...row, mimeType: row.mimeType ?? 'application/octet-stream' }
-  }
+}
+
+// Thème 2 — mode incognito vocal (écoute unique). Idempotent : seule la
+// premiere consommation par le destinataire declenche la suppression du
+// fichier disque ; un second appel (ex. relecture de la page) ne fait rien.
+export async function markVoiceConsumed(userId: string, messageId: string) {
+  const updated = await pool.query<{ file_url: string | null }>(
+    `UPDATE messages SET consumed_at = now()
+       WHERE id = $1 AND receiver_id = $2 AND type = 'voice' AND view_once = true
+         AND deleted_at IS NULL AND consumed_at IS NULL
+       RETURNING file_url`,
+    [messageId, userId],
+  )
+  const row = updated.rows[0]
+  if (!row) return null
+
+  const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [messageId])
+  return { message: mapMessage(result.rows[0]), previousFileUrl: row.file_url }
+}
