@@ -35,10 +35,14 @@ export async function apiMarkMessageDelivered(messageId: string): Promise<void> 
   await request(`/messages/${messageId}/delivered`, { method: 'POST' })
 }
 
-export async function apiSendVoiceChatMessage(receiverId: string, audio: Blob, durationSec: number): Promise<ChatMessage> {
+// Theme 2 : viewOnce (defaut false) marque le vocal comme "ecoute unique" —
+// le fichier sera supprime du disque des que le destinataire le consomme
+// (voir apiConsumeVoiceMessage / apiFetchVoiceBlob).
+export async function apiSendVoiceChatMessage(receiverId: string, audio: Blob, durationSec: number, viewOnce = false): Promise<ChatMessage> {
   const form = new FormData()
   form.append('receiverUserId', receiverId)
   form.append('durationSec', String(Math.max(1, Math.round(durationSec))))
+  form.append('viewOnce', String(viewOnce))
   form.append('audio', audio, `vocal.${audio.type.includes('ogg') ? 'ogg' : 'webm'}`)
 
   let response: Response
@@ -59,6 +63,38 @@ export async function apiSendVoiceChatMessage(receiverId: string, audio: Blob, d
 
 export function chatVoiceUrl(messageId: string): string {
   return `${API_URL}/messages/${messageId}/voice`
+}
+
+// Theme 2 : telecharge l'audio en memoire (blob) avant de le jouer, plutot
+// que de laisser un <audio> natif streamer depuis le serveur. Necessaire
+// pour un vocal a ecoute unique : le fichier est supprime du disque des que
+// apiConsumeVoiceMessage est appele, et un <audio> qui streame encore a ce
+// moment-la verrait sa lecture coupee en cours de route.
+export async function apiFetchVoiceBlob(messageId: string): Promise<Blob> {
+  let response: Response
+  try {
+    response = await fetch(chatVoiceUrl(messageId), {
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'talkie-web' },
+    })
+  } catch {
+    throw new AuthApiError({ code: 'NETWORK_ERROR', message: 'Serveur injoignable. Vérifiez votre connexion.' })
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new AuthApiError({ code: body?.code ?? 'UNKNOWN', message: body?.message ?? 'Le vocal n\'a pas pu être chargé.' })
+  }
+  return response.blob()
+}
+
+// Theme 2 : a appeler une fois la lecture demarree (le fichier est deja
+// telecharge en blob a ce stade, voir apiFetchVoiceBlob) — marque le vocal
+// consomme cote serveur et declenche la suppression du fichier disque.
+// Renvoie le message a jour (consumedAt rempli), ou null si deja consomme
+// avant (rejeu impossible, appel idempotent).
+export async function apiConsumeVoiceMessage(messageId: string): Promise<ChatMessage | null> {
+  const body = await request<{ consumed: boolean; message?: ChatMessage }>(`/messages/${messageId}/voice/consume`, { method: 'POST' })
+  return body.message ?? null
 }
 
 export async function apiSendImageMessage(receiverId: string, image: Blob, filename = 'photo.jpg'): Promise<ChatMessage> {
@@ -155,4 +191,4 @@ export async function apiEditVoiceMessage(messageId: string, audio: Blob, durati
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new AuthApiError({ code: body?.code ?? 'UNKNOWN', message: body?.message ?? 'Le vocal n\'a pas pu être modifié.' })
   return body.message as ChatMessage
-}
+    }
