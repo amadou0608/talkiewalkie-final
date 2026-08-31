@@ -6,7 +6,7 @@ import { hasActiveSocket, notifyUser } from '../../realtime/socket'
 import { sendPushToUser } from '../push/push.service'
 import { absolutePathFor, deleteVoiceMessageFile, saveVoiceMessageFile } from '../voice-messages/storage'
 import { sendVoiceMessageSchema, MAX_VOICE_MESSAGE_BYTES } from '../voice-messages/voice-messages.schemas'
-import { createChatVoiceMessage, getChatMessageFile, editVoiceMessage } from './messages.service'
+import { createChatVoiceMessage, getChatMessageFile, editVoiceMessage, markVoiceConsumed } from './messages.service'
 
 export const createVoice = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw new AppError('INVALID_AUDIO_FILE', 'Aucun fichier audio reçu.', 400)
@@ -17,7 +17,15 @@ export const createVoice = asyncHandler(async (req: Request, res: Response) => {
 
   const { relativePath } = saveVoiceMessageFile(req.file.buffer, req.file.mimetype)
   try {
-    const message = await createChatVoiceMessage(req.userId!, parsed.data.receiverUserId, parsed.data.durationSec, relativePath, req.file.mimetype, hasActiveSocket(parsed.data.receiverUserId))
+    const message = await createChatVoiceMessage(
+      req.userId!,
+      parsed.data.receiverUserId,
+      parsed.data.durationSec,
+      relativePath,
+      req.file.mimetype,
+      hasActiveSocket(parsed.data.receiverUserId),
+      parsed.data.viewOnce,
+    )
     notifyUser(parsed.data.receiverUserId, 'message:new', message)
     if (message.status === 'delivered') notifyUser(req.userId!, 'message:status', { messageId: message.id, status: 'delivered' })
     if (!hasActiveSocket(parsed.data.receiverUserId)) {
@@ -62,6 +70,7 @@ export const voiceFile = asyncHandler(async (req: Request, res: Response) => {
   res.setHeader('Content-Length', end - start + 1)
   fs.createReadStream(absolutePath, { start, end }).pipe(res)
 })
+
 export const editVoice = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw new AppError('INVALID_AUDIO_FILE', 'Aucun fichier audio reçu.', 400)
   if (req.file.size > MAX_VOICE_MESSAGE_BYTES) throw new AppError('FILE_TOO_LARGE', 'Message vocal trop volumineux.', 413)
@@ -80,4 +89,18 @@ export const editVoice = asyncHandler(async (req: Request, res: Response) => {
     deleteVoiceMessageFile(relativePath)
     throw err
   }
+})
+
+// Thème 2 — appelé par le frontend dès que le destinataire démarre la
+// lecture d'un vocal à écoute unique. Supprime le fichier du disque et
+// notifie l'expéditeur pour que son UI reflète la consommation.
+export const consumeVoice = asyncHandler(async (req: Request, res: Response) => {
+  const result = await markVoiceConsumed(req.userId!, req.params.messageId)
+  if (!result) {
+    res.status(200).json({ consumed: false })
+    return
+  }
+  if (result.previousFileUrl) deleteVoiceMessageFile(result.previousFileUrl)
+  notifyUser(result.message.senderId, 'message:updated', result.message)
+  res.status(200).json({ consumed: true, message: result.message })
 })
