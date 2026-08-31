@@ -8,6 +8,11 @@
 // en ligne") — il n'y a pas de notion de livraison push confirmee avant la
 // Phase 9 (Web Push, section 11). Le champ `listened_at` reste la seule
 // distinction utile cote UI pour l'instant (badge "non lu" dans Messages.tsx).
+//
+// Theme 2 (confidentialite) : `view_once` ajoute un vocal a "ecoute unique".
+// Des la premiere ecoute, le fichier est supprime du disque — irrecuperable
+// pour l'expediteur comme pour le destinataire, meme si la ligne DB reste
+// pour l'historique (badge "ecoute" dans Messages.tsx).
 import { pool } from '../../db/pool'
 import { AppError } from '../../utils/AppError'
 import { toPublicUser } from '../users/user.mapper'
@@ -24,6 +29,7 @@ export interface VoiceMessageRow {
   mime_type: string
   size_bytes: number
   duration_sec: number
+  view_once: boolean
   created_at: Date
   delivered_at: Date | null
   listened_at: Date | null
@@ -33,6 +39,7 @@ export interface InboxVoiceMessage {
   id: string
   sender: PublicUser
   durationSec: number
+  viewOnce: boolean
   createdAt: string
   deliveredAt: string | null
   listenedAt: string | null
@@ -43,6 +50,7 @@ function toInboxMessage(row: VoiceMessageRow, sender: PublicUser): InboxVoiceMes
     id: row.id,
     sender,
     durationSec: row.duration_sec,
+    viewOnce: row.view_once,
     createdAt: row.created_at.toISOString(),
     deliveredAt: row.delivered_at?.toISOString() ?? null,
     listenedAt: row.listened_at?.toISOString() ?? null,
@@ -59,6 +67,7 @@ export async function createVoiceMessage(
   senderId: string,
   receiverUserId: string,
   durationSec: number,
+  viewOnce: boolean,
   file: IncomingFile,
 ): Promise<InboxVoiceMessage> {
   if (receiverUserId === senderId) {
@@ -87,10 +96,10 @@ export async function createVoiceMessage(
   try {
     const result = await pool.query<VoiceMessageRow>(
       `INSERT INTO voice_messages
-         (sender_id, receiver_id, storage_path, mime_type, size_bytes, duration_sec, delivered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, now())
+         (sender_id, receiver_id, storage_path, mime_type, size_bytes, duration_sec, view_once, delivered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, now())
        RETURNING *`,
-      [senderId, receiverUserId, relativePath, file.mimetype, file.size, durationSec],
+      [senderId, receiverUserId, relativePath, file.mimetype, file.size, durationSec, viewOnce],
     )
     const row = result.rows[0]
     const senderRow = await findUserRowById(senderId)
@@ -142,18 +151,38 @@ export async function getVoiceMessageForAccess(id: string, requesterId: string):
   return row
 }
 
-// Idempotent (COALESCE) : rejouer l'appel (ex. l'utilisateur rouvre le
-// lecteur) ne remet pas la pendule a zero sur `listened_at`.
-export async function markListened(id: string, receiverId: string): Promise<{ listenedAt: string }> {
-  const result = await pool.query<{ listened_at: Date }>(
-    `UPDATE voice_messages SET listened_at = COALESCE(listened_at, now())
-     WHERE id = $1 AND receiver_id = $2
-     RETURNING listened_at`,
+// Idempotent sur le champ `listened_at` (mis a jour uniquement s'il etait
+// nul), pour distinguer la premiere ecoute (qui declenche potentiellement
+// la suppression du fichier si `view_once`) d'une simple relecture du
+// lecteur, qui ne doit rien re-declencher.
+export async function markListened(id: string, receiverId: string): Promise<{ listenedAt: string; consumed: boolean }> {
+  const firstTime = await pool.query<VoiceMessageRow>(
+    `UPDATE voice_messages SET listened_at = now()
+     WHERE id = $1 AND receiver_id = $2 AND listened_at IS NULL
+     RETURNING *`,
     [id, receiverId],
   )
-  const row = result.rows[0]
+
+  if (firstTime.rows.length > 0) {
+    const row = firstTime.rows[0]
+    if (row.view_once) {
+      // Theme 2 : ecoute unique consommee — le fichier disparait pour tout
+      // le monde (expediteur inclus), seule la ligne DB reste pour
+      // l'historique/badge "ecoute" dans Messages.tsx.
+      deleteVoiceMessageFile(row.storage_path)
+    }
+    return { listenedAt: row.listened_at!.toISOString(), consumed: row.view_once }
+  }
+
+  // Deja marque ecoute avant (l'utilisateur rouvre le lecteur) : ne pas
+  // re-declencher une suppression, juste renvoyer l'etat existant.
+  const existing = await pool.query<VoiceMessageRow>(
+    `SELECT * FROM voice_messages WHERE id = $1 AND receiver_id = $2`,
+    [id, receiverId],
+  )
+  const row = existing.rows[0]
   if (!row) {
     throw new AppError('VOICE_MESSAGE_NOT_FOUND', 'Message vocal introuvable.', 404)
   }
-  return { listenedAt: row.listened_at.toISOString() }
-}
+  return { listenedAt: row.listened_at!.toISOString(), consumed: row.view_once }
+  }
