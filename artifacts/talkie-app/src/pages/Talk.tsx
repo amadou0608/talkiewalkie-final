@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, CheckCheck, Mic, Square, Send, X, Camera, Image as ImageIcon, Video, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, CheckCheck, Mic, Square, Send, X, Camera, Image as ImageIcon, Video, Pencil, Trash2, Eye, EyeOff, Play } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '@/components/Avatar'
 import StatusDot from '@/components/StatusDot'
 import { useContacts } from '@/context/ContactsContext'
 import { useAuth } from '@/context/AuthContext'
 import { compressImage } from '@/lib/imageCompression'
-import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSendTextMessage, apiSendVoiceChatMessage, apiEditVoiceMessage, apiSendImageMessage, apiSendVideoMessage, apiEditTextMessage, apiGetEditHistory, apiDeleteMessage, chatVoiceUrl, chatImageUrl, chatVideoUrl } from '@/lib/messagesApi'
+import { apiListMessages, apiMarkMessageDelivered, apiMarkConversationRead, apiSendTextMessage, apiSendVoiceChatMessage, apiEditVoiceMessage, apiSendImageMessage, apiSendVideoMessage, apiEditTextMessage, apiGetEditHistory, apiDeleteMessage, apiConsumeVoiceMessage, apiFetchVoiceBlob, chatVoiceUrl, chatImageUrl, chatVideoUrl } from '@/lib/messagesApi'
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 import { connectSocket, getSocket } from '@/lib/socket'
 import type { ChatMessage, MessageEditHistoryEntry } from '@/types'
@@ -43,6 +43,11 @@ export default function Talk() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const recorder = useVoiceRecorder()
   const [voiceSending, setVoiceSending] = useState(false)
+  // Theme 2 : mode incognito vocal (ecoute unique). viewOnceCompose est l'etat
+  // du toggle avant l'envoi ; consumingId suit le vocal en cours de
+  // telechargement/lecture cote destinataire (voir playViewOnceVoice).
+  const [viewOnceCompose, setViewOnceCompose] = useState(false)
+  const [consumingId, setConsumingId] = useState<string | null>(null)
   const [imageSending, setImageSending] = useState(false)
   const [videoSending, setVideoSending] = useState(false)
   const [lightbox, setLightbox] = useState<string | null>(null)
@@ -298,8 +303,9 @@ export default function Talk() {
           mergeMessage(message)
           setEditingVoiceId(null)
         } else {
-          const message = await apiSendVoiceChatMessage(userId, result.blob, result.durationSec)
+          const message = await apiSendVoiceChatMessage(userId, result.blob, result.durationSec, viewOnceCompose)
           mergeMessage(message)
+          setViewOnceCompose(false)
         }
       } catch {
         setError(editingVoiceId ? 'Le vocal n\'a pas pu être modifié.' : 'Le message vocal n\'a pas pu être envoyé.')
@@ -329,6 +335,34 @@ export default function Talk() {
   function cancelEditVoice() {
     if (recorder.state === 'recording') recorder.cancel()
     setEditingVoiceId(null)
+  }
+
+  // Theme 2 : telecharge l'audio en memoire (blob) avant de le jouer, pour
+  // garantir une lecture complete meme si le fichier est supprime du disque
+  // par le serveur juste apres l'appel de consommation. L'ordre est
+  // important : on attend que le blob soit entierement recupere avant de
+  // marquer le vocal consomme.
+  async function playViewOnceVoice(messageId: string) {
+    if (consumingId) return
+    setConsumingId(messageId)
+    setError(null)
+    let objectUrl: string | null = null
+    try {
+      const blob = await apiFetchVoiceBlob(messageId)
+      objectUrl = URL.createObjectURL(blob)
+      const audio = new Audio(objectUrl)
+      const cleanup = () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+      audio.addEventListener('ended', cleanup, { once: true })
+      audio.addEventListener('error', cleanup, { once: true })
+      await audio.play()
+      const updated = await apiConsumeVoiceMessage(messageId)
+      if (updated) mergeMessage(updated)
+    } catch {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setError('Le message vocal n\'a pas pu être lu.')
+    } finally {
+      setConsumingId(null)
+    }
   }
 
   useEffect(() => () => {
@@ -364,7 +398,43 @@ export default function Talk() {
               return (
                 <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[82%] rounded-2xl px-3.5 py-2 ${mine ? 'rounded-br-md bg-transmit text-ink' : 'rounded-bl-md border border-line bg-panel text-paper'}`}>
-                    {message.type === 'voice' ? (
+                    {message.type === 'voice' && message.viewOnce ? (
+                      // Theme 2 : mode incognito vocal. Une fois consomme
+                      // (par le destinataire), le fichier n'existe plus sur
+                      // le serveur — plus personne ne peut le rejouer.
+                      message.consumedAt ? (
+                        <div className="flex min-w-[210px] items-center gap-2 text-xs italic opacity-70">
+                          <EyeOff size={14} />
+                          <span>{mine ? 'Vocal à écoute unique · déjà écouté' : 'Vocal à écoute unique · vous avez déjà écouté'}</span>
+                        </div>
+                      ) : mine ? (
+                        <div className="min-w-[210px]">
+                          <audio
+                            key={`${message.id}-${message.createdAt}`}
+                            controls
+                            preload="metadata"
+                            crossOrigin="use-credentials"
+                            src={chatVoiceUrl(message.id)}
+                            className="w-full max-w-[240px]"
+                            aria-label={`Votre message vocal à écoute unique`}
+                          />
+                          <p className="mt-1 flex items-center gap-1 text-[10px] text-ink/70"><Eye size={11} /> Écoute unique · pas encore écouté</p>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void playViewOnceVoice(message.id)}
+                          disabled={consumingId === message.id}
+                          className="flex min-w-[210px] items-center gap-2 rounded-xl border border-line bg-panel2 px-3 py-2 text-sm text-paper disabled:opacity-50"
+                        >
+                          {consumingId === message.id ? (
+                            <span>Chargement…</span>
+                          ) : (
+                            <><Play size={15} /><span>Écouter (unique) · {message.durationSec ?? 0}s</span></>
+                          )}
+                        </button>
+                      )
+                    ) : message.type === 'voice' ? (
                       <div className="min-w-[210px]">
                         <audio
                           key={`${message.id}-${message.editedAt ?? message.createdAt}`}
@@ -382,7 +452,7 @@ export default function Talk() {
                         />
                         <div className={`mt-1 flex items-center justify-between text-[10px] ${mine ? 'text-ink/70' : 'text-paperDim'}`}>
                           <span>{message.durationSec ?? 0}s{mine && !message.editedAt && editRemainingMinutes(message.createdAt) > 0 && ` · modifiable ${editRemainingMinutes(message.createdAt)} min`}</span>
-                          {mine && !message.deletedAt && editRemainingMinutes(message.createdAt) > 0 && (
+                          {mine && !message.deletedAt && !message.viewOnce && editRemainingMinutes(message.createdAt) > 0 && (
                             <button type="button" title={`Modifiable encore ${editRemainingMinutes(message.createdAt)} min`} onClick={() => startEditVoice(message.id)} className="ml-1 opacity-70 hover:opacity-100"><Pencil size={11} /></button>
                           )}
                         </div>
@@ -455,6 +525,18 @@ export default function Talk() {
               <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => cameraInputRef.current?.click()} aria-label="Prendre une photo" className="hidden h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40 sm:flex"><Camera size={17} /></button>
               <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => videoGalleryInputRef.current?.click()} aria-label="Choisir une vidéo" className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40"><Video size={17} /></button>
               <button type="button" disabled={imageSending || videoSending || voiceSending} onClick={() => videoCameraInputRef.current?.click()} aria-label="Enregistrer une vidéo" className="hidden h-11 w-11 items-center justify-center rounded-full border border-line bg-panel text-paper disabled:opacity-40 sm:flex"><Camera size={17} /></button>
+              {!editingVoiceId && (
+                <button
+                  type="button"
+                  disabled={imageSending || videoSending || voiceSending}
+                  onClick={() => setViewOnceCompose((v) => !v)}
+                  aria-label={viewOnceCompose ? 'Désactiver l’écoute unique pour le prochain vocal' : 'Activer l’écoute unique pour le prochain vocal'}
+                  title={viewOnceCompose ? 'Prochain vocal : écoute unique activée' : 'Prochain vocal : écoute normale'}
+                  className={`flex h-11 w-11 items-center justify-center rounded-full border disabled:opacity-40 ${viewOnceCompose ? 'border-transmit bg-transmit text-ink' : 'border-line bg-panel text-paper'}`}
+                >
+                  {viewOnceCompose ? <Eye size={17} /> : <EyeOff size={17} />}
+                </button>
+              )}
             </div>
             <textarea
               value={text}
@@ -545,4 +627,5 @@ export default function Talk() {
       )}
     </div>
   )
-          }
+              }
+     
