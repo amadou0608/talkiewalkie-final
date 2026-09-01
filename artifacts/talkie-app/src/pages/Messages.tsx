@@ -4,8 +4,15 @@
 // ContactsContext : chargement au montage, mise a jour temps reel via le
 // WebSocket deja utilise pour la presence (Phase 5) et la signalisation
 // Le même WebSocket partagé sera réutilisé par la messagerie complète.
+//
+// Theme 2 : mode incognito vocal (ecoute unique). Un vocal view_once ne peut
+// pas etre lu via l'element <audio> partage (togglePlay) car le fichier est
+// supprime du disque des que apiMarkVoiceMessageListened est appele — un
+// <audio> qui streame encore a ce moment-la verrait sa lecture coupee. Ces
+// vocaux passent donc par un flux separe (playViewOnceVoiceMessage) qui
+// telecharge l'audio entier en memoire avant de le jouer.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Pause, Play } from 'lucide-react'
+import { Eye, EyeOff, Pause, Play } from 'lucide-react'
 import TopBar from '@/components/TopBar'
 import BottomNav from '@/components/BottomNav'
 import Avatar from '@/components/Avatar'
@@ -14,6 +21,7 @@ import { connectSocket, getSocket } from '@/lib/socket'
 import {
   apiListVoiceMessages,
   apiMarkVoiceMessageListened,
+  apiFetchVoiceMessageBlob,
   voiceMessageAudioUrl,
 } from '@/lib/voiceMessagesApi'
 import type { VoiceMessage } from '@/types'
@@ -44,6 +52,9 @@ export default function Messages() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
+  // Theme 2 : suit le vocal a ecoute unique en cours de telechargement/lecture,
+  // separe de playingId (mecanisme different, voir plus haut).
+  const [consumingId, setConsumingId] = useState<string | null>(null)
 
   const audioElRef = useRef<HTMLAudioElement | null>(null)
   if (!audioElRef.current && typeof window !== 'undefined') {
@@ -133,6 +144,33 @@ export default function Messages() {
     }
   }
 
+  // Theme 2 : flux dedie pour un vocal a ecoute unique. Telecharge l'audio
+  // entier en blob avant de le jouer (immunise contre la suppression du
+  // fichier disque qui suit l'appel de consommation), puis marque le vocal
+  // ecoute une fois la lecture demarree.
+  async function playViewOnceVoiceMessage(message: VoiceMessage) {
+    if (consumingId) return
+    setConsumingId(message.id)
+    setError(null)
+    let objectUrl: string | null = null
+    try {
+      const blob = await apiFetchVoiceMessageBlob(message.id)
+      objectUrl = URL.createObjectURL(blob)
+      const audio = new Audio(objectUrl)
+      const cleanup = () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+      audio.addEventListener('ended', cleanup, { once: true })
+      audio.addEventListener('error', cleanup, { once: true })
+      await audio.play()
+      const result = await apiMarkVoiceMessageListened(message.id)
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, listenedAt: result.listenedAt } : m)))
+    } catch {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setError('Le message vocal n\'a pas pu être lu.')
+    } finally {
+      setConsumingId(null)
+    }
+  }
+
   return (
     <div className="min-h-screen pb-24">
       <TopBar title="Messages" eyebrow="Vocaux hors ligne" />
@@ -160,6 +198,7 @@ export default function Messages() {
             {messages.map((m) => {
               const unread = !m.listenedAt
               const playing = playingId === m.id
+              const consuming = consumingId === m.id
               return (
                 <li
                   key={m.id}
@@ -182,19 +221,48 @@ export default function Messages() {
                         {formatDuration(m.durationSec)}
                       </span>
                     </div>
-                    <p className="text-xs text-paperDim">{formatTimestamp(m.createdAt)}</p>
+                    <p className="text-xs text-paperDim">
+                      {formatTimestamp(m.createdAt)}
+                      {m.viewOnce && (
+                        <span className="ml-1.5 inline-flex items-center gap-1 text-transmit">
+                          <Eye size={10} /> écoute unique
+                        </span>
+                      )}
+                    </p>
                   </div>
-                  <button
-                    onClick={() => togglePlay(m)}
-                    aria-label={
-                      playing ? `Mettre en pause le message de ${m.sender.displayName}` : `Ecouter le message de ${m.sender.displayName}`
-                    }
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
-                      playing ? 'bg-transmit text-ink' : 'bg-panel2 text-paper hover:bg-line'
-                    }`}
-                  >
-                    {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
-                  </button>
+
+                  {m.viewOnce && m.listenedAt ? (
+                    // Theme 2 : fichier deja supprime du disque, plus rien a jouer.
+                    <span className="flex items-center gap-1 shrink-0 text-[11px] italic text-paperDim">
+                      <EyeOff size={13} /> écouté
+                    </span>
+                  ) : m.viewOnce ? (
+                    <button
+                      onClick={() => void playViewOnceVoiceMessage(m)}
+                      disabled={consuming}
+                      aria-label={`Écouter une seule fois le message de ${m.sender.displayName}`}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-panel2 text-paper hover:bg-line disabled:opacity-50"
+                    >
+                      {consuming ? (
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-transmit" aria-hidden="true" />
+                      ) : (
+                        <Play size={16} className="ml-0.5" />
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => togglePlay(m)}
+                      aria-label={
+                        playing ? `Mettre en pause le message de ${m.sender.displayName}` : `Ecouter le message de ${m.sender.displayName}`
+                      }
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
+                        playing ? 'bg-transmit text-ink' : 'bg-panel2 text-paper hover:bg-line'
+                      }`}
+                    >
+                      {playing ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+                    </button>
+                  )}
+
                   {unread && <span className="h-2 w-2 shrink-0 rounded-full bg-transmit" aria-hidden="true" />}
                 </li>
               )
