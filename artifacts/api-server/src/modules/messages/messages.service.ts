@@ -17,6 +17,8 @@ export interface MessageItem {
   status: 'sent' | 'delivered' | 'read'
   viewOnce: boolean
   consumedAt: string | null
+  disappearAfterSec: number | null
+  deleteAt: string | null
   createdAt: string
   editedAt: string | null
   deletedAt: string | null
@@ -24,8 +26,8 @@ export interface MessageItem {
   receiver: MessageUser
 }
 
-type MessageRow = Omit<MessageItem, 'createdAt' | 'editedAt' | 'deletedAt' | 'consumedAt' | 'sender' | 'receiver'> & {
-  created_at: Date; edited_at: Date | null; deleted_at: Date | null; consumed_at: Date | null
+type MessageRow = Omit<MessageItem, 'createdAt' | 'editedAt' | 'deletedAt' | 'consumedAt' | 'deleteAt' | 'sender' | 'receiver'> & {
+  created_at: Date; edited_at: Date | null; deleted_at: Date | null; consumed_at: Date | null; delete_at: Date | null
   sender_username: string; sender_display_name: string; sender_avatar_url: string | null
   receiver_username: string; receiver_display_name: string; receiver_avatar_url: string | null
 }
@@ -35,6 +37,7 @@ function mapMessage(row: MessageRow): MessageItem {
     id: row.id, senderId: row.senderId, receiverId: row.receiverId, type: row.type,
     content: row.content, fileUrl: row.fileUrl, durationSec: row.durationSec, status: row.status,
     viewOnce: row.viewOnce, consumedAt: row.consumed_at?.toISOString() ?? null,
+    disappearAfterSec: row.disappearAfterSec, deleteAt: row.delete_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(), editedAt: row.edited_at?.toISOString() ?? null,
     deletedAt: row.deleted_at?.toISOString() ?? null,
     sender: { id: row.senderId, username: row.sender_username, displayName: row.sender_display_name, avatarUrl: row.sender_avatar_url ?? undefined, avatarColor: avatarColorFor(row.sender_username) },
@@ -46,6 +49,7 @@ const baseSelect = `
   SELECT m.id, m.sender_id AS "senderId", m.receiver_id AS "receiverId", m.type,
          m.content, m.file_url AS "fileUrl", m.duration_sec AS "durationSec", m.status,
          m.view_once AS "viewOnce", m.consumed_at,
+         m.disappear_after_sec AS "disappearAfterSec", m.delete_at,
          m.created_at, m.edited_at, m.deleted_at,
           su.username AS sender_username, su.display_name AS sender_display_name, su.avatar_url AS sender_avatar_url,
           ru.username AS receiver_username, ru.display_name AS receiver_display_name, ru.avatar_url AS receiver_avatar_url
@@ -74,12 +78,12 @@ export async function listConversation(userId: string, otherUserId: string, limi
   return result.rows.reverse().map(mapMessage)
 }
 
-export async function createTextMessage(senderId: string, receiverId: string, content: string, delivered: boolean) {
+export async function createTextMessage(senderId: string, receiverId: string, content: string, delivered: boolean, disappearAfterSec: number | null = null) {
   await assertConversation(senderId, receiverId)
   const status = delivered ? 'delivered' : 'sent'
   const inserted = await pool.query<{ id: string }>(
-    `INSERT INTO messages (sender_id, receiver_id, type, content, status)
-     VALUES ($1, $2, 'text', $3, $4) RETURNING id`, [senderId, receiverId, content, status])
+    `INSERT INTO messages (sender_id, receiver_id, type, content, status, disappear_after_sec)
+     VALUES ($1, $2, 'text', $3, $4, $5) RETURNING id`, [senderId, receiverId, content, status, disappearAfterSec])
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [inserted.rows[0].id])
   return mapMessage(result.rows[0])
 }
@@ -88,6 +92,11 @@ export async function createTextMessage(senderId: string, receiverId: string, co
 // read_at trace la lecture reelle (toujours mis a jour, sert au badge "non
 // lus" du destinataire). status ne passe a 'read' que si l'expediteur est
 // autorise a le voir (getHideReadReceipts) ; sinon il reste a 'delivered'.
+//
+// Thème 2 — suppression programmee (31 août 2026) : si le message porte un
+// disappear_after_sec, la lecture est aussi le declencheur du compte a
+// rebours — delete_at est calcule ici, une seule fois (IS NULL protege
+// contre un second appel qui redemarrerait le minuteur).
 export async function markRead(userId: string, messageId: string) {
   const existing = await pool.query<{ senderId: string; status: MessageItem['status']; readAt: Date | null }>(
     `SELECT sender_id AS "senderId", status, read_at AS "readAt" FROM messages WHERE id = $1 AND receiver_id = $2 LIMIT 1`,
@@ -99,7 +108,11 @@ export async function markRead(userId: string, messageId: string) {
   const nextStatus = hideReceipts ? (row.status === 'sent' ? 'delivered' : row.status) : 'read'
 
   await pool.query(
-    `UPDATE messages SET read_at = now(), status = $1 WHERE id = $2 AND receiver_id = $3`,
+    `UPDATE messages SET read_at = now(), status = $1,
+       delete_at = CASE WHEN disappear_after_sec IS NOT NULL AND delete_at IS NULL
+                         THEN now() + (disappear_after_sec || ' seconds')::interval
+                         ELSE delete_at END
+     WHERE id = $2 AND receiver_id = $3`,
     [nextStatus, messageId, userId])
   const updated = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1 AND m.receiver_id = $2 LIMIT 1`, [messageId, userId])
   return mapMessage(updated.rows[0])
@@ -110,7 +123,10 @@ export async function markConversationRead(userId: string, otherUserId: string) 
   const hideReceipts = await getHideReadReceipts(userId, otherUserId)
   const nextStatus = hideReceipts ? 'delivered' : 'read'
   const result = await pool.query<{ id: string; sender_id: string }>(
-    `UPDATE messages SET read_at = now(), status = CASE WHEN status = 'read' THEN status ELSE $3 END
+    `UPDATE messages SET read_at = now(), status = CASE WHEN status = 'read' THEN status ELSE $3 END,
+       delete_at = CASE WHEN disappear_after_sec IS NOT NULL AND delete_at IS NULL
+                         THEN now() + (disappear_after_sec || ' seconds')::interval
+                         ELSE delete_at END
        WHERE receiver_id = $1 AND sender_id = $2 AND read_at IS NULL AND deleted_at IS NULL
        RETURNING id, sender_id`, [userId, otherUserId, nextStatus])
   return result.rows
@@ -230,13 +246,14 @@ export async function createChatVoiceMessage(
   mimeType: string,
   delivered: boolean,
   viewOnce: boolean,
+  disappearAfterSec: number | null = null,
 ) {
   await assertConversation(senderId, receiverId)
   const status = delivered ? 'delivered' : 'sent'
   const inserted = await pool.query<{ id: string }>(
-    `INSERT INTO messages (sender_id, receiver_id, type, file_url, duration_sec, status, mime_type, view_once)
-     VALUES ($1, $2, 'voice', $3, $4, $5, $6, $7) RETURNING id`,
-    [senderId, receiverId, fileUrl, durationSec, status, mimeType, viewOnce],
+    `INSERT INTO messages (sender_id, receiver_id, type, file_url, duration_sec, status, mime_type, view_once, disappear_after_sec)
+     VALUES ($1, $2, 'voice', $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [senderId, receiverId, fileUrl, durationSec, status, mimeType, viewOnce, disappearAfterSec],
   )
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [inserted.rows[0].id])
   return mapMessage(result.rows[0])
@@ -250,13 +267,14 @@ export async function createChatMediaMessage(
   mimeType: string,
   delivered: boolean,
   durationSec?: number,
+  disappearAfterSec: number | null = null,
 ) {
   await assertConversation(senderId, receiverId)
   const status = delivered ? 'delivered' : 'sent'
   const inserted = await pool.query<{ id: string }>(
-    `INSERT INTO messages (sender_id, receiver_id, type, file_url, duration_sec, status, mime_type)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [senderId, receiverId, type, fileUrl, type === 'video' ? durationSec ?? null : null, status, mimeType],
+    `INSERT INTO messages (sender_id, receiver_id, type, file_url, duration_sec, status, mime_type, disappear_after_sec)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [senderId, receiverId, type, fileUrl, type === 'video' ? durationSec ?? null : null, status, mimeType, disappearAfterSec],
   )
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [inserted.rows[0].id])
   return mapMessage(result.rows[0])
@@ -293,3 +311,17 @@ export async function markVoiceConsumed(userId: string, messageId: string) {
   const result = await pool.query<MessageRow>(`${baseSelect} WHERE m.id = $1`, [messageId])
   return { message: mapMessage(result.rows[0]), previousFileUrl: row.file_url }
 }
+
+// Thème 2 — suppression programmée (31 août 2026). Appelée périodiquement
+// par le job planifié (voir messages.disappearing-job.ts) : trouve tous les
+// messages dont le compte à rebours est arrivé à échéance, les "supprime"
+// de la même façon qu'une suppression manuelle (deleteMessage), et renvoie
+// de quoi notifier les deux participants de chaque conversation concernée.
+export async function purgeExpiredMessages(): Promise<Array<{ id: string; senderId: string; receiverId: string }>> {
+  const result = await pool.query<{ id: string; sender_id: string; receiver_id: string }>(
+    `UPDATE messages SET deleted_at = now(), content = NULL, file_url = NULL
+       WHERE delete_at IS NOT NULL AND delete_at <= now() AND deleted_at IS NULL
+       RETURNING id, sender_id, receiver_id`,
+  )
+  return result.rows.map((r) => ({ id: r.id, senderId: r.sender_id, receiverId: r.receiver_id }))
+  }
