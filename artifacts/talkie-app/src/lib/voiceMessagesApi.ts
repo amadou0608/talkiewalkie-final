@@ -47,14 +47,19 @@ export async function apiListVoiceMessages(): Promise<VoiceMessage[]> {
 // `audio` est le Blob enregistre par useVoiceRecorder (MediaRecorder) —
 // jamais de champ Content-Type manuel a poser : le navigateur genere la
 // boundary multipart correcte lui-meme des qu'on passe un FormData au fetch.
+// Theme 2 : viewOnce (defaut false) marque le vocal comme "ecoute unique" —
+// le fichier sera supprime du disque des que le destinataire l'ecoute (voir
+// apiMarkVoiceMessageListened).
 export async function apiSendVoiceMessage(
   receiverUserId: string,
   audio: Blob,
   durationSec: number,
+  viewOnce = false,
 ): Promise<VoiceMessage> {
   const form = new FormData()
   form.append('receiverUserId', receiverUserId)
   form.append('durationSec', String(Math.max(1, Math.round(durationSec))))
+  form.append('viewOnce', String(viewOnce))
   form.append('audio', audio, `vocal.${audio.type.includes('ogg') ? 'ogg' : 'webm'}`)
 
   const { message } = await request<{ message: VoiceMessage }>('/voice-messages', {
@@ -64,8 +69,31 @@ export async function apiSendVoiceMessage(
   return message
 }
 
-export async function apiMarkVoiceMessageListened(id: string): Promise<void> {
-  await request<void>(`/voice-messages/${id}/listened`, { method: 'POST' })
+// Theme 2 : le backend renvoie desormais aussi `consumed` (true si ce vocal
+// etait a ecoute unique et vient d'etre supprime du disque a cet instant).
+export async function apiMarkVoiceMessageListened(id: string): Promise<{ listenedAt: string; consumed: boolean }> {
+  return request<{ listenedAt: string; consumed: boolean }>(`/voice-messages/${id}/listened`, { method: 'POST' })
+}
+
+// Theme 2 : telecharge l'audio en memoire (blob) avant de le jouer. Pour un
+// vocal a ecoute unique, le fichier est supprime du disque des que
+// apiMarkVoiceMessageListened est appele — sans ce telechargement prealable,
+// un <audio> qui streame encore a ce moment-la verrait sa lecture coupee.
+export async function apiFetchVoiceMessageBlob(id: string): Promise<Blob> {
+  let response: Response
+  try {
+    response = await fetch(voiceMessageAudioUrl(id), {
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'talkie-web' },
+    })
+  } catch {
+    throw new AuthApiError({ code: 'NETWORK_ERROR', message: 'Serveur injoignable. Verifiez votre connexion.' })
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new AuthApiError({ code: body?.code ?? 'UNKNOWN', message: body?.message ?? 'Le vocal n\'a pas pu être chargé.' })
+  }
+  return response.blob()
 }
 
 // Construit l'URL de streaming authentifie d'un vocal. A utiliser avec
@@ -75,4 +103,4 @@ export async function apiMarkVoiceMessageListened(id: string): Promise<void> {
 // backend/src/modules/voice-messages/storage.ts).
 export function voiceMessageAudioUrl(id: string): string {
   return `${API_URL}/voice-messages/${id}/audio`
-}
+    }
