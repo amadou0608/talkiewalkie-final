@@ -315,13 +315,17 @@ export async function markVoiceConsumed(userId: string, messageId: string) {
 // Thème 2 — suppression programmée (31 août 2026). Appelée périodiquement
 // par le job planifié (voir messages.disappearing-job.ts) : trouve tous les
 // messages dont le compte à rebours est arrivé à échéance, les "supprime"
-// de la même façon qu'une suppression manuelle (deleteMessage), et renvoie
-// de quoi notifier les deux participants de chaque conversation concernée.
-export async function purgeExpiredMessages(): Promise<Array<{ id: string; senderId: string; receiverId: string }>> {
-  const result = await pool.query<{ id: string; sender_id: string; receiver_id: string }>(
+// de la même façon qu'une suppression manuelle (deleteMessage). Renvoie en
+// plus le type et l'ancien chemin de fichier (avant qu'il soit effacé de la
+// ligne) pour que le job puisse aussi supprimer le fichier physique
+// correspondant (photo, vidéo ou vocal) sur le disque.
+export async function purgeExpiredMessages(): Promise<Array<{
+  id: string; senderId: string; receiverId: string; type: MessageItem['type']; fileUrl: string | null
+}>> {
+  const result = await pool.query<{ id: string; sender_id: string; receiver_id: string; type: MessageItem['type']; file_url: string | null }>(
     `UPDATE messages SET deleted_at = now(), content = NULL, file_url = NULL
        WHERE delete_at IS NOT NULL AND delete_at <= now() AND deleted_at IS NULL
-       RETURNING id, sender_id, receiver_id`,
+       RETURNING id, sender_id, receiver_id, type, file_url`,
   )
-  return result.rows.map((r) => ({ id: r.id, senderId: r.sender_id, receiverId: r.receiver_id }))
+  return result.rows.map((r) => ({ id: r.id, senderId: r.sender_id, receiverId: r.receiver_id, type: r.type, fileUrl: r.file_url }))
   }
