@@ -6,6 +6,7 @@ import { AppError } from '../../utils/AppError'
 import { asyncHandler } from '../../utils/asyncHandler'
 import { hasActiveSocket, notifyUser } from '../../realtime/socket'
 import { sendPushToUser } from '../push/push.service'
+import { parseDisappearAfterSec } from './disappearing'
 import { createChatMediaMessage, getChatMessageFile } from './messages.service'
 
 export const MAX_IMAGE_BYTES = 12 * 1024 * 1024
@@ -32,11 +33,12 @@ export const createImage = asyncHandler(async (req: Request, res: Response) => {
   if (!EXTENSIONS[req.file.mimetype]) throw new AppError('INVALID_IMAGE_FILE', 'Format image non supporté. Utilisez JPG, PNG, WebP ou GIF.', 400)
   const receiverId = typeof req.body.receiverUserId === 'string' ? req.body.receiverUserId : ''
   if (!receiverId) throw new AppError('VALIDATION_ERROR', 'Destinataire invalide.', 400)
+  const disappearAfterSec = parseDisappearAfterSec(req.body.disappearAfterSec)
 
   const relativePath = saveImage(req.file.buffer, req.file.mimetype)
   try {
     const delivered = hasActiveSocket(receiverId)
-    const message = await createChatMediaMessage(req.userId!, receiverId, 'image', relativePath, req.file.mimetype, delivered)
+    const message = await createChatMediaMessage(req.userId!, receiverId, 'image', relativePath, req.file.mimetype, delivered, undefined, disappearAfterSec)
     notifyUser(receiverId, 'message:new', message)
     if (delivered) notifyUser(req.userId!, 'message:status', { messageId: message.id, status: 'delivered' })
     if (!delivered) {
