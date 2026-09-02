@@ -24,9 +24,12 @@ export async function apiListMessages(userId: string): Promise<ChatMessage[]> {
   return messages
 }
 
-export async function apiSendTextMessage(receiverId: string, content: string): Promise<ChatMessage> {
+// Theme 2 : disappearAfterSec (30/300/3600/86400/604800 secondes, ou null
+// pour desactive) declenche la suppression programmee du message des que le
+// destinataire le lit (voir apiMarkMessageRead / apiMarkConversationRead).
+export async function apiSendTextMessage(receiverId: string, content: string, disappearAfterSec: number | null = null): Promise<ChatMessage> {
   const { message } = await request<{ message: ChatMessage }>('/messages', {
-    method: 'POST', body: JSON.stringify({ receiverId, content }),
+    method: 'POST', body: JSON.stringify({ receiverId, content, disappearAfterSec }),
   })
   return message
 }
@@ -37,12 +40,15 @@ export async function apiMarkMessageDelivered(messageId: string): Promise<void> 
 
 // Theme 2 : viewOnce (defaut false) marque le vocal comme "ecoute unique" —
 // le fichier sera supprime du disque des que le destinataire le consomme
-// (voir apiConsumeVoiceMessage / apiFetchVoiceBlob).
-export async function apiSendVoiceChatMessage(receiverId: string, audio: Blob, durationSec: number, viewOnce = false): Promise<ChatMessage> {
+// (voir apiConsumeVoiceMessage / apiFetchVoiceBlob). disappearAfterSec est
+// ignore cote serveur si viewOnce est actif (les deux mecanismes ne se
+// cumulent pas).
+export async function apiSendVoiceChatMessage(receiverId: string, audio: Blob, durationSec: number, viewOnce = false, disappearAfterSec: number | null = null): Promise<ChatMessage> {
   const form = new FormData()
   form.append('receiverUserId', receiverId)
   form.append('durationSec', String(Math.max(1, Math.round(durationSec))))
   form.append('viewOnce', String(viewOnce))
+  if (disappearAfterSec !== null) form.append('disappearAfterSec', String(disappearAfterSec))
   form.append('audio', audio, `vocal.${audio.type.includes('ogg') ? 'ogg' : 'webm'}`)
 
   let response: Response
@@ -97,9 +103,11 @@ export async function apiConsumeVoiceMessage(messageId: string): Promise<ChatMes
   return body.message ?? null
 }
 
-export async function apiSendImageMessage(receiverId: string, image: Blob, filename = 'photo.jpg'): Promise<ChatMessage> {
+// Theme 2 : disappearAfterSec sur une photo — meme mecanisme que le texte.
+export async function apiSendImageMessage(receiverId: string, image: Blob, filename = 'photo.jpg', disappearAfterSec: number | null = null): Promise<ChatMessage> {
   const form = new FormData()
   form.append('receiverUserId', receiverId)
+  if (disappearAfterSec !== null) form.append('disappearAfterSec', String(disappearAfterSec))
   form.append('image', image, filename)
   let response: Response
   try {
@@ -120,10 +128,12 @@ export function chatImageUrl(messageId: string): string {
 }
 
 
-export async function apiSendVideoMessage(receiverId: string, video: Blob, durationSec: number, filename = 'video.mp4'): Promise<ChatMessage> {
+// Theme 2 : disappearAfterSec sur une video — meme mecanisme que le texte.
+export async function apiSendVideoMessage(receiverId: string, video: Blob, durationSec: number, filename = 'video.mp4', disappearAfterSec: number | null = null): Promise<ChatMessage> {
   const form = new FormData()
   form.append('receiverUserId', receiverId)
   form.append('durationSec', String(Math.ceil(durationSec)))
+  if (disappearAfterSec !== null) form.append('disappearAfterSec', String(disappearAfterSec))
   form.append('video', video, filename)
   let response: Response
   try {
@@ -191,4 +201,4 @@ export async function apiEditVoiceMessage(messageId: string, audio: Blob, durati
   const body = await response.json().catch(() => null)
   if (!response.ok) throw new AuthApiError({ code: body?.code ?? 'UNKNOWN', message: body?.message ?? 'Le vocal n\'a pas pu être modifié.' })
   return body.message as ChatMessage
-    }
+      }
