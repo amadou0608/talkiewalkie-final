@@ -33,6 +33,13 @@ function videoPath(relativePath: string) {
   return path.join(UPLOADS_ROOT, path.basename(relativePath))
 }
 
+// Theme 2 — suppression programmee : appelee par le job de purge
+// (messages.disappearing-job.ts) une fois la ligne DB deja mise a jour, pour
+// effacer aussi le fichier physique correspondant.
+export function deleteVideoFile(relativePath: string) {
+  try { fs.unlinkSync(videoPath(relativePath)) } catch { /* deja absent */ }
+}
+
 export const createVideo = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw new AppError('INVALID_VIDEO_FILE', 'Aucune vidéo reçue.', 400)
   if (req.file.size > MAX_VIDEO_BYTES) throw new AppError('FILE_TOO_LARGE', 'Vidéo trop volumineuse. Limite : 60 Mo.', 413)
@@ -65,7 +72,7 @@ export const createVideo = asyncHandler(async (req: Request, res: Response) => {
     }
     res.status(201).json({ message })
   } catch (err) {
-    try { fs.unlinkSync(videoPath(relativePath)) } catch { /* déjà absent */ }
+    deleteVideoFile(relativePath)
     throw err
   }
 })
