@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, CheckCheck, Mic, Square, Send, X, Camera, Image as ImageIcon, Video, Pencil, Trash2, Eye, EyeOff, Play } from 'lucide-react'
+import { ArrowLeft, Check, CheckCheck, Mic, Square, Send, X, Camera, Image as ImageIcon, Video, Pencil, Trash2, Eye, EyeOff, Play, Clock, Timer } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '@/components/Avatar'
 import StatusDot from '@/components/StatusDot'
@@ -20,6 +20,44 @@ const EDIT_WINDOW_MS = 20 * 60 * 1000
 function editRemainingMinutes(createdAt: string) {
   const remaining = EDIT_WINDOW_MS - (Date.now() - new Date(createdAt).getTime())
   return remaining > 0 ? Math.ceil(remaining / 60000) : 0
+}
+
+// Theme 2 : suppression programmee (delai choisi a l'envoi, compte a rebours
+// demarre a la lecture par le destinataire, pas a l'envoi).
+const DISAPPEAR_OPTIONS: { value: number | null; label: string; short: string }[] = [
+  { value: null, label: 'Désactivé', short: '' },
+  { value: 30, label: '30 secondes', short: '30s' },
+  { value: 300, label: '5 minutes', short: '5min' },
+  { value: 3600, label: '1 heure', short: '1h' },
+  { value: 86400, label: '1 jour', short: '1j' },
+  { value: 604800, label: '1 semaine', short: '1sem' },
+]
+
+function nextDisappearOption(current: number | null): number | null {
+  const index = DISAPPEAR_OPTIONS.findIndex((o) => o.value === current)
+  const next = DISAPPEAR_OPTIONS[(index + 1) % DISAPPEAR_OPTIONS.length]
+  return next.value
+}
+
+function disappearShortLabel(value: number | null): string {
+  return DISAPPEAR_OPTIONS.find((o) => o.value === value)?.short ?? ''
+}
+
+// Formatte le temps restant avant suppression d'un message deja lu
+// (deleteAt rempli). Retourne null si le delai est deja depasse (le message
+// devrait disparaitre d'un instant a l'autre via l'evenement socket
+// 'message:deleted', deja gere par ailleurs dans ce composant).
+function formatRemainingBeforeDelete(deleteAt: string): string | null {
+  const remainingMs = new Date(deleteAt).getTime() - Date.now()
+  if (remainingMs <= 0) return null
+  const sec = Math.ceil(remainingMs / 1000)
+  if (sec < 60) return `${sec}s`
+  const min = Math.ceil(sec / 60)
+  if (min < 60) return `${min}min`
+  const hr = Math.ceil(min / 60)
+  if (hr < 24) return `${hr}h`
+  const days = Math.ceil(hr / 24)
+  return `${days}j`
 }
 
 export default function Talk() {
@@ -48,6 +86,11 @@ export default function Talk() {
   // telechargement/lecture cote destinataire (voir playViewOnceVoice).
   const [viewOnceCompose, setViewOnceCompose] = useState(false)
   const [consumingId, setConsumingId] = useState<string | null>(null)
+  // Theme 2 : delai de suppression programmee choisi pour le prochain
+  // message envoye (tous types confondus). Mutuellement exclusif avec
+  // viewOnceCompose au niveau de l'UI (le backend ignore de toute facon
+  // disappearAfterSec si viewOnce est actif sur un vocal).
+  const [disappearCompose, setDisappearCompose] = useState<number | null>(null)
   const [imageSending, setImageSending] = useState(false)
   const [videoSending, setVideoSending] = useState(false)
   const [lightbox, setLightbox] = useState<string | null>(null)
@@ -148,8 +191,9 @@ export default function Talk() {
     setSending(true)
     setError(null)
     try {
-      const message = await apiSendTextMessage(userId, content)
+      const message = await apiSendTextMessage(userId, content, disappearCompose)
       mergeMessage(message)
+      setDisappearCompose(null)
     } catch {
       setError('Le message n\'a pas pu être envoyé.')
     } finally {
@@ -197,8 +241,9 @@ export default function Talk() {
     setError(null)
     try {
       const compressed = await compressImage(imagePreview.file)
-      const message = await apiSendImageMessage(userId, compressed, `photo-${Date.now()}.jpg`)
+      const message = await apiSendImageMessage(userId, compressed, `photo-${Date.now()}.jpg`, disappearCompose)
       mergeMessage(message)
+      setDisappearCompose(null)
       cancelImagePreview()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'La photo n’a pas pu être envoyée.')
@@ -249,8 +294,9 @@ export default function Talk() {
     setError(null)
     try {
       const extension = videoPreview.file.name.split('.').pop() || 'mp4'
-      const message = await apiSendVideoMessage(userId, videoPreview.file, videoPreview.durationSec, `video-${Date.now()}.${extension}`)
+      const message = await apiSendVideoMessage(userId, videoPreview.file, videoPreview.durationSec, `video-${Date.now()}.${extension}`, disappearCompose)
       mergeMessage(message)
+      setDisappearCompose(null)
       cancelVideoPreview()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'La vidéo n’a pas pu être envoyée.')
@@ -303,9 +349,10 @@ export default function Talk() {
           mergeMessage(message)
           setEditingVoiceId(null)
         } else {
-          const message = await apiSendVoiceChatMessage(userId, result.blob, result.durationSec, viewOnceCompose)
+          const message = await apiSendVoiceChatMessage(userId, result.blob, result.durationSec, viewOnceCompose, viewOnceCompose ? null : disappearCompose)
           mergeMessage(message)
           setViewOnceCompose(false)
+          setDisappearCompose(null)
         }
       } catch {
         setError(editingVoiceId ? 'Le vocal n\'a pas pu être modifié.' : 'Le message vocal n\'a pas pu être envoyé.')
@@ -479,6 +526,20 @@ export default function Talk() {
                         )}
                       </>
                     )}
+                    {message.disappearAfterSec && !message.deletedAt && (
+                      <div className={`mt-1 flex items-center gap-1 text-[9px] italic ${mine ? 'text-ink/60' : 'text-paperDim'}`}>
+                        <Timer size={10} />
+                        {message.deleteAt ? (
+                          formatRemainingBeforeDelete(message.deleteAt) ? (
+                            <span>Disparaît dans {formatRemainingBeforeDelete(message.deleteAt)}</span>
+                          ) : (
+                            <span>Disparition imminente…</span>
+                          )
+                        ) : (
+                          <span>Disparaîtra {DISAPPEAR_OPTIONS.find((o) => o.value === message.disappearAfterSec)?.label.toLowerCase()} après lecture</span>
+                        )}
+                      </div>
+                    )}
                     <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? 'text-ink/70' : 'text-paperDim'}`}>
                       <span>{timeLabel(message.createdAt)}</span>
                       {mine && !message.deletedAt && <>{message.type === 'text' && editRemainingMinutes(message.createdAt) > 0 && (
@@ -529,7 +590,7 @@ export default function Talk() {
                 <button
                   type="button"
                   disabled={imageSending || videoSending || voiceSending}
-                  onClick={() => setViewOnceCompose((v) => !v)}
+                  onClick={() => { setViewOnceCompose((v) => !v); if (!viewOnceCompose) setDisappearCompose(null) }}
                   aria-label={viewOnceCompose ? 'Désactiver l’écoute unique pour le prochain vocal' : 'Activer l’écoute unique pour le prochain vocal'}
                   title={viewOnceCompose ? 'Prochain vocal : écoute unique activée' : 'Prochain vocal : écoute normale'}
                   className={`flex h-11 w-11 items-center justify-center rounded-full border disabled:opacity-40 ${viewOnceCompose ? 'border-transmit bg-transmit text-ink' : 'border-line bg-panel text-paper'}`}
@@ -537,6 +598,19 @@ export default function Talk() {
                   {viewOnceCompose ? <Eye size={17} /> : <EyeOff size={17} />}
                 </button>
               )}
+              <button
+                type="button"
+                disabled={imageSending || videoSending || voiceSending || viewOnceCompose}
+                onClick={() => setDisappearCompose((v) => nextDisappearOption(v))}
+                aria-label={disappearCompose ? `Prochain message : suppression après ${DISAPPEAR_OPTIONS.find((o) => o.value === disappearCompose)?.label}` : 'Activer la suppression programmée pour le prochain message'}
+                title={disappearCompose ? `Suppression après lecture : ${DISAPPEAR_OPTIONS.find((o) => o.value === disappearCompose)?.label}` : 'Suppression programmée désactivée'}
+                className={`relative flex h-11 w-11 items-center justify-center rounded-full border disabled:opacity-40 ${disappearCompose ? 'border-transmit bg-transmit text-ink' : 'border-line bg-panel text-paper'}`}
+              >
+                {disappearCompose ? <Timer size={17} /> : <Clock size={17} />}
+                {disappearCompose && (
+                  <span className="absolute -bottom-1 -right-1 rounded-full bg-ink px-1 text-[9px] font-semibold text-transmit">{disappearShortLabel(disappearCompose)}</span>
+                )}
+              </button>
             </div>
             <textarea
               value={text}
@@ -574,6 +648,21 @@ export default function Talk() {
               <button type="button" onClick={cancelImagePreview} aria-label="Fermer l’aperçu" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
             </div>
             <div className="flex max-h-[65vh] justify-center bg-black p-3"><img src={imagePreview.url} alt="Aperçu de la photo à envoyer" className="max-h-[60vh] max-w-full rounded-xl object-contain" /></div>
+            <div className="flex gap-2 p-3">
+              <button type="button" onClick={cancelImagePreview} disabled={imageSending} className="flex-1 rounded-xl border border-line px-4 py-3 text-sm text-paper disabled:opacity-40">Annuler</button>
+              <button type="button" onClick={() => void sendImagePreview()} disabled={imageSending} className="flex-1 rounded-xl bg-transmit px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">{imageSending ? 'Envoi…' : 'Envoyer'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {videoPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <p className="font-display text-sm font-semibold text-paper">Aperçu de la vidéo</p>
+              <button type="button" onClick={cancelVideoPreview} aria-label="Fermer l’aperçu vidéo" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
+            </div>
+             <div className="flex max-h-[65vh] justify-center bg-black p-3"><img src={imagePreview.url} alt="Aperçu de la photo à envoyer" className="max-h-[60vh] max-w-full rounded-xl object-contain" /></div>
             <div className="flex gap-2 p-3">
               <button type="button" onClick={cancelImagePreview} disabled={imageSending} className="flex-1 rounded-xl border border-line px-4 py-3 text-sm text-paper disabled:opacity-40">Annuler</button>
               <button type="button" onClick={() => void sendImagePreview()} disabled={imageSending} className="flex-1 rounded-xl bg-transmit px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">{imageSending ? 'Envoi…' : 'Envoyer'}</button>
@@ -627,5 +716,4 @@ export default function Talk() {
       )}
     </div>
   )
-              }
-     
+}
