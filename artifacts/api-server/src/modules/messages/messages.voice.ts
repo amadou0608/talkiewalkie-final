@@ -6,6 +6,7 @@ import { hasActiveSocket, notifyUser } from '../../realtime/socket'
 import { sendPushToUser } from '../push/push.service'
 import { absolutePathFor, deleteVoiceMessageFile, saveVoiceMessageFile } from '../voice-messages/storage'
 import { sendVoiceMessageSchema, MAX_VOICE_MESSAGE_BYTES } from '../voice-messages/voice-messages.schemas'
+import { parseDisappearAfterSec } from './disappearing'
 import { createChatVoiceMessage, getChatMessageFile, editVoiceMessage, markVoiceConsumed } from './messages.service'
 
 export const createVoice = asyncHandler(async (req: Request, res: Response) => {
@@ -14,6 +15,12 @@ export const createVoice = asyncHandler(async (req: Request, res: Response) => {
   if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Données invalides.')
   if (req.file.size > MAX_VOICE_MESSAGE_BYTES) throw new AppError('FILE_TOO_LARGE', 'Message vocal trop volumineux.', 413)
   if (!req.file.mimetype.startsWith('audio/')) throw new AppError('INVALID_AUDIO_FILE', 'Format audio non supporté.', 400)
+
+  // Theme 2 — suppression programmee : un vocal a ecoute unique gere deja
+  // sa propre disparition (fichier supprime a la consommation) ; les deux
+  // mecanismes ne sont pas censes se cumuler, donc on ignore
+  // disappearAfterSec si viewOnce est actif.
+  const disappearAfterSec = parsed.data.viewOnce ? null : parseDisappearAfterSec(req.body.disappearAfterSec)
 
   const { relativePath } = saveVoiceMessageFile(req.file.buffer, req.file.mimetype)
   try {
@@ -25,6 +32,7 @@ export const createVoice = asyncHandler(async (req: Request, res: Response) => {
       req.file.mimetype,
       hasActiveSocket(parsed.data.receiverUserId),
       parsed.data.viewOnce,
+      disappearAfterSec,
     )
     notifyUser(parsed.data.receiverUserId, 'message:new', message)
     if (message.status === 'delivered') notifyUser(req.userId!, 'message:status', { messageId: message.id, status: 'delivered' })
