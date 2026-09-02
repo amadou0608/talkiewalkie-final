@@ -16,7 +16,7 @@ export const createText = asyncHandler(async (req: Request, res: Response) => {
   const parsed = createTextMessageSchema.safeParse(req.body)
   if (!parsed.success) throw new AppError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Données invalides.')
   const delivered = hasActiveSocket(parsed.data.receiverId)
-  const message = await createTextMessage(req.userId!, parsed.data.receiverId, parsed.data.content, delivered)
+  const message = await createTextMessage(req.userId!, parsed.data.receiverId, parsed.data.content, delivered, parsed.data.disappearAfterSec ?? null)
   notifyUser(parsed.data.receiverId, 'message:new', message)
   if (delivered) notifyUser(req.userId!, 'message:status', { messageId: message.id, status: 'delivered' })
   res.status(201).json({ message })
