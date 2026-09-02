@@ -6,6 +6,7 @@ import { AppError } from '../../utils/AppError'
 import { asyncHandler } from '../../utils/asyncHandler'
 import { hasActiveSocket, notifyUser } from '../../realtime/socket'
 import { sendPushToUser } from '../push/push.service'
+import { parseDisappearAfterSec } from './disappearing'
 import { createChatMediaMessage, getChatMessageFile } from './messages.service'
 
 export const MAX_VIDEO_BYTES = 60 * 1024 * 1024
@@ -43,13 +44,14 @@ export const createVideo = asyncHandler(async (req: Request, res: Response) => {
   if (!Number.isFinite(rawDuration) || rawDuration <= 0 || rawDuration > MAX_VIDEO_DURATION_SEC) {
     throw new AppError('VIDEO_TOO_LONG', 'La vidéo doit durer au maximum 5 minutes.', 400)
   }
+  const disappearAfterSec = parseDisappearAfterSec(req.body.disappearAfterSec)
 
   const durationSec = Math.ceil(rawDuration)
   const relativePath = saveVideo(req.file.buffer, req.file.mimetype)
   try {
     const delivered = hasActiveSocket(receiverId)
     const message = await createChatMediaMessage(
-      req.userId!, receiverId, 'video', relativePath, req.file.mimetype, delivered, durationSec,
+      req.userId!, receiverId, 'video', relativePath, req.file.mimetype, delivered, durationSec, disappearAfterSec,
     )
     notifyUser(receiverId, 'message:new', message)
     if (delivered) notifyUser(req.userId!, 'message:status', { messageId: message.id, status: 'delivered' })
