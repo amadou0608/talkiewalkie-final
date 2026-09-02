@@ -13,6 +13,7 @@ import { errorHandler } from './middleware/errorHandler'
 import { securityHeaders, apiRateLimit } from './middleware/security'
 import { csrfProtection } from './middleware/csrfProtection'
 import { initSocketServer } from './realtime/socket'
+import { startDisappearingMessagesJob } from './modules/messages/messages.disappearing-job'
 
 const app = express()
 const API_PREFIX = '/api'
@@ -63,6 +64,8 @@ app.use(errorHandler)
 // connexion HTTP existante, il ne s'agit pas d'un second serveur separe).
 const httpServer = createServer(app)
 initSocketServer(httpServer)
+
+startDisappearingMessagesJob()
 
 httpServer.listen(env.port, '0.0.0.0', () => {
   console.log(`[server] Talkie API + WebSocket demarres sur le port ${env.port}`)
