@@ -1,18 +1,40 @@
-// Theme 2 — suppression programmee/ephemere façon Signal. Un message
-// (texte, vocal, photo ou video) peut porter un delai de suppression choisi
-// par l'expediteur a l'envoi. Le compte a rebours ne demarre qu'a la
-// lecture par le destinataire (voir markRead/markConversationRead dans
-// messages.service.ts) — un message envoye mais jamais lu ne disparait
-// jamais tout seul.
-import { AppError } from '../../utils/AppError'
 
-export const DISAPPEAR_AFTER_OPTIONS_SEC = [30, 300, 3600, 86400, 604800] as const
+// Theme 2 — suppression programmee façon Signal. Balayage periodique qui
+// cherche les messages dont le compte a rebours (delete_at) est arrive a
+// echeance, les supprime (purgeExpiredMessages, meme effet qu'une
+// suppression manuelle), efface les fichiers physiques correspondants
+// (photo/video/vocal) puis notifie les deux participants de chaque
+// conversation touchee pour que leur ecran se mette a jour en temps reel
+// sans avoir besoin de rafraichir la page.
+import { notifyUser } from '../../realtime/socket'
+import { purgeExpiredMessages } from './messages.service'
+import { deleteImageFile } from './messages.media'
+import { deleteVideoFile } from './messages.video'
+import { deleteVoiceMessageFile } from '../voice-messages/storage'
 
-export function parseDisappearAfterSec(raw: unknown): number | null {
-  if (raw === undefined || raw === null || raw === '') return null
-  const value = Number(raw)
-  if (!Number.isInteger(value) || !(DISAPPEAR_AFTER_OPTIONS_SEC as readonly number[]).includes(value)) {
-    throw new AppError('VALIDATION_ERROR', 'Délai de suppression programmée invalide.', 400)
+// 30s : assez frequent pour que le delai le plus court propose (30 secondes)
+// reste credible sans trop attendre, sans pour autant marteler la base de
+// donnees inutilement pour un evenement rare.
+const SWEEP_INTERVAL_MS = 30 * 1000
+
+async function sweepOnce() {
+  try {
+    const purged = await purgeExpiredMessages()
+    for (const item of purged) {
+      if (item.fileUrl) {
+        if (item.type === 'image') deleteImageFile(item.fileUrl)
+        else if (item.type === 'video') deleteVideoFile(item.fileUrl)
+        else if (item.type === 'voice') deleteVoiceMessageFile(item.fileUrl)
+      }
+      notifyUser(item.senderId, 'message:deleted', { messageId: item.id })
+      notifyUser(item.receiverId, 'message:deleted', { messageId: item.id })
+    }
+  } catch (err) {
+    console.error('[disappearing-job] echec du balayage', err)
   }
-  return value
 }
+
+export function startDisappearingMessagesJob() {
+  setInterval(() => { void sweepOnce() }, SWEEP_INTERVAL_MS)
+  console.log('[disappearing-job] balayage des messages programmes demarre')
+          }
