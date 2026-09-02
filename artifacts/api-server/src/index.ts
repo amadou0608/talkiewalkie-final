@@ -13,7 +13,7 @@ import { errorHandler } from './middleware/errorHandler'
 import { securityHeaders, apiRateLimit } from './middleware/security'
 import { csrfProtection } from './middleware/csrfProtection'
 import { initSocketServer } from './realtime/socket'
-import { startDisappearingMessagesJob } from './modules/messages/messages.disappearing-job'
+import { startDisappearingMessagesJob } from './modules/messages/disappearing-job'
 
 const app = express()
 const API_PREFIX = '/api'
