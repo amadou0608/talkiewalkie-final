@@ -28,10 +28,13 @@ export interface Contact {
 // Phase 8 : forme telle que renvoyee par GET /voice-messages (backend). Le
 // destinataire est toujours l'utilisateur courant (implicite, pas besoin de
 // le repeter) — seul l'expediteur est utile a afficher cote reception.
+// Theme 2 : viewOnce ajoute l'ecoute unique (le fichier disparait du disque
+// des la premiere ecoute, meme si la ligne reste pour l'historique).
 export interface VoiceMessage {
   id: string
   sender: User
   durationSec: number
+  viewOnce: boolean
   createdAt: string
   deliveredAt: string | null
   listenedAt: string | null
@@ -47,6 +50,15 @@ export interface ChatMessageUser {
   avatarUrl?: string
 }
 
+// Theme 2 : viewOnce/consumedAt s'appliquent uniquement aux messages de type
+// 'voice'. consumedAt non-nul signifie que le fichier a ete supprime du
+// disque (ecoute par le destinataire) — plus aucune lecture possible.
+// disappearAfterSec/deleteAt s'appliquent aux 4 types (texte/vocal/photo/
+// video) : disappearAfterSec est le delai choisi par l'expediteur a
+// l'envoi (30/300/3600/86400/604800 secondes, ou null si desactive) ;
+// deleteAt est calcule cote serveur des que le destinataire lit le message
+// (createdAt + disappearAfterSec a partir de la lecture, pas de l'envoi) et
+// reste null tant que le message n'a pas encore ete lu.
 export interface ChatMessage {
   id: string
   senderId: string
@@ -56,6 +68,10 @@ export interface ChatMessage {
   fileUrl: string | null
   durationSec: number | null
   status: ChatMessageStatus
+  viewOnce: boolean
+  consumedAt: string | null
+  disappearAfterSec: number | null
+  deleteAt: string | null
   createdAt: string
   editedAt: string | null
   deletedAt: string | null
