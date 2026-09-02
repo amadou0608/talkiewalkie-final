@@ -27,6 +27,13 @@ function imagePath(relativePath: string) {
   return path.join(UPLOADS_ROOT, path.basename(relativePath))
 }
 
+// Theme 2 — suppression programmee : appelee par le job de purge
+// (messages.disappearing-job.ts) une fois la ligne DB deja mise a jour, pour
+// effacer aussi le fichier physique correspondant.
+export function deleteImageFile(relativePath: string) {
+  try { fs.unlinkSync(imagePath(relativePath)) } catch { /* deja absent */ }
+}
+
 export const createImage = asyncHandler(async (req: Request, res: Response) => {
   if (!req.file) throw new AppError('INVALID_IMAGE_FILE', 'Aucune image reçue.', 400)
   if (req.file.size > MAX_IMAGE_BYTES) throw new AppError('FILE_TOO_LARGE', 'Image trop volumineuse.', 413)
@@ -47,7 +54,7 @@ export const createImage = asyncHandler(async (req: Request, res: Response) => {
     }
     res.status(201).json({ message })
   } catch (err) {
-    try { fs.unlinkSync(imagePath(relativePath)) } catch { /* already absent */ }
+    deleteImageFile(relativePath)
     throw err
   }
 })
