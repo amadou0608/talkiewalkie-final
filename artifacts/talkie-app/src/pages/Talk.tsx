@@ -662,21 +662,6 @@ export default function Talk() {
               <p className="font-display text-sm font-semibold text-paper">Aperçu de la vidéo</p>
               <button type="button" onClick={cancelVideoPreview} aria-label="Fermer l’aperçu vidéo" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
             </div>
-             <div className="flex max-h-[65vh] justify-center bg-black p-3"><img src={imagePreview.url} alt="Aperçu de la photo à envoyer" className="max-h-[60vh] max-w-full rounded-xl object-contain" /></div>
-            <div className="flex gap-2 p-3">
-              <button type="button" onClick={cancelImagePreview} disabled={imageSending} className="flex-1 rounded-xl border border-line px-4 py-3 text-sm text-paper disabled:opacity-40">Annuler</button>
-              <button type="button" onClick={() => void sendImagePreview()} disabled={imageSending} className="flex-1 rounded-xl bg-transmit px-4 py-3 text-sm font-semibold text-ink disabled:opacity-40">{imageSending ? 'Envoi…' : 'Envoyer'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {videoPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <p className="font-display text-sm font-semibold text-paper">Aperçu de la vidéo</p>
-              <button type="button" onClick={cancelVideoPreview} aria-label="Fermer l’aperçu vidéo" className="rounded-full p-2 text-paperDim hover:bg-panel2 hover:text-paper"><X size={19} /></button>
-            </div>
             <div className="flex max-h-[65vh] justify-center bg-black p-3"><video src={videoPreview.url} controls playsInline preload="metadata" className="max-h-[60vh] max-w-full rounded-xl" /></div>
             <div className="flex items-center justify-between gap-2 border-t border-line p-3">
               <span className="text-xs text-paperDim">Durée : {Math.ceil(videoPreview.durationSec)}s · maximum 5 min</span>
